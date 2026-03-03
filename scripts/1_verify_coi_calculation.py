@@ -116,7 +116,7 @@ def main():
         our_coi = cois[k]
         their_coi = v.coi
         if our_coi != their_coi:
-            print('FAIL', our_coi[id], their_coi)
+            print('FAIL', our_coi, their_coi)
             raise Exception
 
     for k, v in sorted(cats.items()):

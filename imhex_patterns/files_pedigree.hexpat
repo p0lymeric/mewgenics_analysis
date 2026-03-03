@@ -48,7 +48,7 @@ struct HashMap<T> {
     // b) if data_table[i] is occupied, stores a key concatenated with value
     T data_table[capacity];
 
-    // Remaining entries until the table is upsized to stay under a fill rate quota
+    // Remaining entries until the table is upsized to stay below fill rate quota
     u64 growth_left;
 };
 
@@ -63,5 +63,5 @@ HashMap<ParentCOI> parents_to_coi_memo_map @ $;
 
 // Stores a set of u64 cat_ids
 // Likely the set of all cats in the field/currently living in the house
-// (TO VERIFY) including those who have been donated that day?
+// including those who were donated that day
 HashMap<Child> accessible_cats @ $;
