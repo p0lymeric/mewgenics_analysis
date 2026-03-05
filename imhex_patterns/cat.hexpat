@@ -223,7 +223,7 @@ String actives_inherited[4] @ $;
 
 struct Passive {
     String name;
-    s32 sidecar;
+    s32 unknown_0;
 };
 
 // Current usable passive ability list

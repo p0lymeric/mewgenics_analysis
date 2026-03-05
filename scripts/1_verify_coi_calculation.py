@@ -100,9 +100,8 @@ def map_coi(coi):
         return 'slightly'
     elif coi >= 0.50:
         return 'moderately'
-    # unsure if the game uses the same text as "moderately" at this watermark
     elif coi >= 0.80:
-        return 'extremely'
+        return 'highly'
     else:
         return 'not'
 
@@ -115,12 +114,15 @@ def main():
     for k, v in pedigree.items():
         our_coi = cois[k]
         their_coi = v.coi
+        # check the coi value stored in the pedigree structure vs. ours
         if our_coi != their_coi:
             print('FAIL', our_coi, their_coi)
             raise Exception
 
     for k, v in sorted(cats.items()):
         pedigree_info = pedigree[k]
+        # check the coi field stored in the cat structure vs. ours
+        assert(pedigree_info.coi == v.coi())
         parent_a = map_name(cats, pedigree_info.parent_a_id)
         parent_b = map_name(cats, pedigree_info.parent_b_id)
         our_coi = cois[k]

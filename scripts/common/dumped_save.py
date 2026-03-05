@@ -5,31 +5,322 @@ import struct
 CatPedigree = namedtuple('CatPedigree', ['child_id', 'parent_a_id', 'parent_b_id', 'coi'])
 CatCoiMemo = namedtuple('CatCoiMemo', ['parent_a_id', 'parent_b_id', 'coi'])
 
+BodyPartDescriptor = namedtuple('BodyPartDescriptor', ['part_sprite_idx', 'texture_sprite_idx', 'unknown_0', 'unknown_1_nonzero_on_arms_and_legs', 'unknown_2'])
+BodyParts = namedtuple('BodyParts', ['texture_sprite_idx', 'heritable_palette_idx', 'collar_palette_idx', 'body', 'head', 'tail', 'leg1', 'leg2', 'arm1', 'arm2', 'lefteye', 'righteye', 'lefteyebrow', 'righteyebrow', 'leftear', 'rightear', 'mouth', 'unknown_0', 'unknown_1', 'voice', 'pitch'])
+CatStats = namedtuple('CatStats', ['str', 'dex', 'con', 'int', 'spd', 'cha', 'lck'])
+CampaignStats = namedtuple('CampaignStats', ['hp', 'dead', 'unknown_0', 'unknown_1', 'size', 'unknown_data'])
+PassiveAbility = namedtuple('PassiveAbility', ['name', 'unknown_0'])
+Equipment = namedtuple('Equipment', ['version', 'has_equipment', 'name', 'unknown_0', 'unknown_1', 'unknown_2', 'unknown_3', 'unknown_4', 'unknown_5', 'unknown_6'])
+Kit = namedtuple('Kit', ['head', 'face', 'neck', 'weapon', 'trinket'])
+
+# walk_ragged_array_of_length_prefixed_variable_length_structures
+def w_ra_of_lpvls(
+    header_struct_descriptor, data_struct_descriptor_template, footer_struct_descriptor,
+    length_element_idx,
+    blob, initial_offset, sequence_length,
+    data_struct_processor=lambda h, d, f: d,
+    collect_data=True
+):
+    data = []
+    offset = initial_offset
+
+    sizeof_header = struct.calcsize(header_struct_descriptor)
+    if footer_struct_descriptor is not None:
+        sizeof_footer = struct.calcsize(footer_struct_descriptor)
+    else:
+        sizeof_footer = 0
+
+    for i in range(sequence_length):
+        header = struct.unpack_from(header_struct_descriptor, blob, offset=offset)
+        length_element = header[length_element_idx]
+        offset += sizeof_header
+        data_struct_descriptor = data_struct_descriptor_template.format(length=length_element)
+        sizeof_data = struct.calcsize(data_struct_descriptor)
+        if collect_data:
+            data_element = struct.unpack_from(data_struct_descriptor, blob, offset=offset)
+            if footer_struct_descriptor is not None:
+                footer = struct.unpack_from(footer_struct_descriptor, blob, offset=offset + sizeof_data)
+            else:
+                footer = None
+            data.append(data_struct_processor(header, data_element, footer))
+        offset += sizeof_data
+        offset += sizeof_footer
+    return data, offset
+
+def parse_string(blob, initial_offset, calculate_offset=False):
+    offset = initial_offset
+    length = struct.unpack_from('<Q', blob, offset=offset)[0]
+    offset += 8
+    name_bytes = struct.unpack_from(f'<{length}s', blob, offset=offset)[0]
+    offset += length
+    if calculate_offset:
+        return offset
+    else:
+        return name_bytes.decode('utf-8')
+
 class Cat:
     def __init__(self, sql_key, blob):
         self.sql_key = sql_key
         self.blob = blob
 
+        # Pre-compute offsets past variable-length structures
+        # messy... did not imagine that there'd be so many
+        self.name_length_bytes = struct.unpack_from('<Q', self.blob, offset=12)[0] * 2
+        self.name_offset_past = 20 + self.name_length_bytes
+        self.nameplate_symbol_length_bytes = struct.unpack_from('<Q', self.blob, offset=self.name_offset_past)[0]
+        self.nameplate_symbol_offset_past = self.name_offset_past + 8 + self.nameplate_symbol_length_bytes
+        self.unknown_2_length_bytes = struct.unpack_from('<Q', self.blob, offset=self.nameplate_symbol_offset_past + 16)[0]
+        self.unknown_2_offset_past = self.nameplate_symbol_offset_past + 24 + self.unknown_2_length_bytes
+        self.voice_length_bytes = struct.unpack_from('<Q', self.blob, offset=self.unknown_2_offset_past + 368)[0]
+        self.voice_offset_past = self.unknown_2_offset_past + 376 + self.voice_length_bytes
+        self.unknown_14_length_bytes = struct.unpack_from('<Q', self.blob, offset=self.voice_offset_past + 92)[0]
+        self.unknown_14_offset_past = self.voice_offset_past + 100 + self.unknown_14_length_bytes
+        self.campaign_stats_inner_length_dwords = struct.unpack_from('<I', self.blob, offset=self.unknown_14_offset_past + 10)[0]
+        self.campaign_stats_inner_offset_past = self.unknown_14_offset_past + 14 + self.campaign_stats_inner_length_dwords * 4
+        _, self.actives_basic_offset_past = w_ra_of_lpvls('<Q', '<{length}s', None, 0, self.blob, self.campaign_stats_inner_offset_past, 2, collect_data=False)
+        _, self.actives_accessible_offset_past = w_ra_of_lpvls('<Q', '<{length}s', None, 0, self.blob, self.actives_basic_offset_past, 4, collect_data=False)
+        _, self.actives_inherited_offset_past = w_ra_of_lpvls('<Q', '<{length}s', None, 0, self.blob, self.actives_accessible_offset_past, 4, collect_data=False)
+        _, self.passives_offset_past = w_ra_of_lpvls('<Q', '<{length}s', '<i', 0, self.blob, self.actives_inherited_offset_past, 2, collect_data=False)
+        _, self.mutations_offset_past = w_ra_of_lpvls('<Q', '<{length}s', '<i', 0, self.blob, self.passives_offset_past, 2, collect_data=False)
+        self.equipment_offset_past = self.equipment(calculate_offset=True)
+        self.collar_offset_past = parse_string(self.blob, self.equipment_offset_past, calculate_offset=True)
+        _, self.unknown_17_offset_past = w_ra_of_lpvls('<Q', '<{length}c', None, 0, self.blob, self.collar_offset_past + 28, 1, collect_data=False)
+
+    def version(self):
+        offset = 0
+        return struct.unpack_from('<I', self.blob, offset=offset)[0]
+
+    def entropy(self):
+        offset = 4
+        return struct.unpack_from('<Q', self.blob, offset=offset)[0]
+
     def name(self):
-        offset = 12
-        name_length = struct.unpack_from('<Q', self.blob, offset=offset)[0]
-        offset += 8
-        name_bytes = struct.unpack_from(f'<{name_length*2}s', self.blob, offset=offset)[0]
+        offset = 20
+        name_bytes = struct.unpack_from(f'<{self.name_length_bytes}s', self.blob, offset=offset)[0]
         return name_bytes.decode('utf-16')
 
-    def sex(self):
-        offset = 12
-        name_length = struct.unpack_from('<Q', self.blob, offset=offset)[0]
-        offset += 8 + name_length * 2
-        decoration_length = struct.unpack_from('<Q', self.blob, offset=offset)[0]
-        offset += 8 + decoration_length
+    def nameplate_symbol(self):
+        offset = self.name_offset_past + 8
+        name_bytes = struct.unpack_from(f'<{self.nameplate_symbol_length_bytes}s', self.blob, offset=offset)[0]
+        return name_bytes.decode('utf-8')
+
+    def sex(self, raw_view=False):
+        offset = self.nameplate_symbol_offset_past
         sex_bytes = struct.unpack_from(f'<i', self.blob, offset=offset)[0]
-        if sex_bytes == 0:
-            return 'male'
-        elif sex_bytes == 1:
-            return 'female'
+        if raw_view:
+            return sex_bytes
         else:
-            return 'neutral'
+            return ['male', 'female', 'neutral'][sex_bytes]
+
+    def sex_dup(self, raw_view=False):
+        offset = self.nameplate_symbol_offset_past + 4
+        sex_bytes = struct.unpack_from(f'<i', self.blob, offset=offset)[0]
+        if raw_view:
+            return sex_bytes
+        else:
+            return ['male', 'female', 'neutral'][sex_bytes]
+
+    def status_flags(self):
+        offset = self.nameplate_symbol_offset_past + 8
+        return struct.unpack_from(f'<Q', self.blob, offset=offset)[0]
+
+    def unknown_2(self):
+        offset = self.nameplate_symbol_offset_past + 24
+        str_bytes = struct.unpack_from(f'<{self.unknown_2_length_bytes}s', self.blob, offset=offset)[0]
+        return str_bytes.decode('utf-8')
+
+    def unknown_3(self):
+        offset = self.unknown_2_offset_past
+        return struct.unpack_from(f'<i', self.blob, offset=offset)[0]
+
+    def libido(self):
+        offset = self.unknown_2_offset_past + 4
+        return struct.unpack_from(f'<d', self.blob, offset=offset)[0]
+
+    def sexuality(self):
+        offset = self.unknown_2_offset_past + 12
+        return struct.unpack_from(f'<d', self.blob, offset=offset)[0]
+
+    def lover_sql_key(self):
+        offset = self.unknown_2_offset_past + 20
+        return struct.unpack_from(f'<Q', self.blob, offset=offset)[0]
+
+    def unknown_7(self):
+        offset = self.unknown_2_offset_past + 28
+        return struct.unpack_from(f'<d', self.blob, offset=offset)[0]
+
+    def aggression(self):
+        offset = self.unknown_2_offset_past + 36
+        return struct.unpack_from(f'<d', self.blob, offset=offset)[0]
+
+    def hater_sql_key(self):
+        offset = self.unknown_2_offset_past + 44
+        return struct.unpack_from(f'<Q', self.blob, offset=offset)[0]
+
+    def unknown_9(self):
+        offset = self.unknown_2_offset_past + 52
+        return struct.unpack_from(f'<d', self.blob, offset=offset)[0]
+
+    def unknown_10(self):
+        offset = self.unknown_2_offset_past + 60
+        return struct.unpack_from(f'<d', self.blob, offset=offset)[0]
+
+    def body_parts(self):
+        offset = self.unknown_2_offset_past + 68
+        texture_sprite_idx, heritable_palette_idx, collar_palette_idx = struct.unpack_from(f'<iii', self.blob, offset=offset)
+
+        offset += 12
+        limbs = []
+        for i in range(14):
+            limbs.append(BodyPartDescriptor._make(struct.unpack_from(f'<5i', self.blob, offset=offset)))
+
+        offset += 14 * 5 * 4
+        unknown_0, unknown_1 = struct.unpack_from(f'<ii', self.blob, offset=offset)
+
+        offset += 8 + 8
+        # assert(offset == self.unknown_2_offset_past + 376)
+        voice = struct.unpack_from(f'<{self.voice_length_bytes}s', self.blob, offset=offset)[0].decode('utf-8')
+
+        offset += self.voice_length_bytes
+        # assert(offset == self.voice_offset_past)
+        pitch = struct.unpack_from(f'<d', self.blob, offset=offset)[0]
+
+        return BodyParts(texture_sprite_idx, heritable_palette_idx, collar_palette_idx, *limbs, unknown_0, unknown_1, voice, pitch)
+
+    def stats_heritable(self):
+        offset = self.voice_offset_past + 8
+        return CatStats._make(struct.unpack_from(f'<7i', self.blob, offset=offset))
+
+    def stats_delta_levelling(self):
+        offset = self.voice_offset_past + 8 + 28
+        return CatStats._make(struct.unpack_from(f'<7i', self.blob, offset=offset))
+
+    def stats_delta_injuries(self):
+        offset = self.voice_offset_past + 8 + 56
+        return CatStats._make(struct.unpack_from(f'<7i', self.blob, offset=offset))
+
+    def unknown_14(self):
+        offset = self.voice_offset_past + 100
+        str_bytes = struct.unpack_from(f'<{self.unknown_14_length_bytes}s', self.blob, offset=offset)[0]
+        return str_bytes.decode('utf-8')
+
+    def campaign_stats(self):
+        offset = self.unknown_14_offset_past
+        unknown_0, alive, unknown_1, unknown_2, unknown_array_size = struct.unpack_from(f'<i??iI', self.blob, offset=offset)
+
+        offset += 14
+        # assert(offset == self.unknown_14_offset_past + 14)
+        unknown_array = struct.unpack_from(f'<{self.campaign_stats_inner_length_dwords}i', self.blob, offset=offset)
+
+        # offset += self.unknown_15_length_dwords * 4
+        # assert(offset == self.campaign_stats_inner_offset_past)
+
+        return CampaignStats(unknown_0, alive, unknown_1, unknown_2, unknown_array_size, unknown_array)
+
+    def actives_basic(self):
+        offset = self.campaign_stats_inner_offset_past
+        array, offset = w_ra_of_lpvls('<Q', '<{length}s', None, 0, self.blob, offset, 2, data_struct_processor=lambda h, d, f: d[0].decode('utf-8'))
+        return array
+
+    def actives_accessible(self):
+        offset = self.actives_basic_offset_past
+        array, offset = w_ra_of_lpvls('<Q', '<{length}s', None, 0, self.blob, offset, 4, data_struct_processor=lambda h, d, f: d[0].decode('utf-8'))
+        return array
+
+    def actives_inherited(self):
+        offset = self.actives_accessible_offset_past
+        array, offset = w_ra_of_lpvls('<Q', '<{length}s', None, 0, self.blob, offset, 4, data_struct_processor=lambda h, d, f: d[0].decode('utf-8'))
+        return array
+
+    def passives(self):
+        offset = self.actives_inherited_offset_past
+        array, offset = w_ra_of_lpvls('<Q', '<{length}s', '<i', 0, self.blob, offset, 2, data_struct_processor=lambda h, d, f: (d[0].decode('utf-8'), f[0]))
+        return array
+
+    def mutations(self):
+        offset = self.passives_offset_past
+        array, offset = w_ra_of_lpvls('<Q', '<{length}s', '<i', 0, self.blob, offset, 2, data_struct_processor=lambda h, d, f: (d[0].decode('utf-8'), f[0]))
+        return array
+
+    def _equipment_helper(self, offset, calculate_offset=False):
+        version, has_equipment = struct.unpack_from(f'<I?', self.blob, offset=offset)
+
+        offset += 5
+        if has_equipment:
+            name, offset = w_ra_of_lpvls('<Q', '<{length}s', None, 0, self.blob, offset, 1, data_struct_processor=lambda h, d, f: d[0].decode('utf-8'), collect_data=not calculate_offset)
+            unknown_0, offset = w_ra_of_lpvls('<Q', '<{length}s', None, 0, self.blob, offset, 1, data_struct_processor=lambda h, d, f: d[0].decode('utf-8'), collect_data=not calculate_offset)
+            if calculate_offset:
+                offset += 18
+                return None, offset
+            else:
+                unknowns_1_6 = struct.unpack_from(f'<iiiicc', self.blob, offset=offset)
+                offset += 18
+                return Equipment(version, has_equipment, name, unknown_0, *unknowns_1_6), offset
+        else:
+            if calculate_offset:
+                return None, offset
+            else:
+                return Equipment(version, has_equipment, '', '', 0, 0, 0, 0, 0, 0), offset
+
+    def equipment(self, calculate_offset=False):
+        offset = self.mutations_offset_past
+        head, offset = self._equipment_helper(offset, calculate_offset=calculate_offset)
+        face, offset = self._equipment_helper(offset, calculate_offset=calculate_offset)
+        neck, offset = self._equipment_helper(offset, calculate_offset=calculate_offset)
+        weapon, offset = self._equipment_helper(offset, calculate_offset=calculate_offset)
+        trinket, offset = self._equipment_helper(offset, calculate_offset=calculate_offset)
+        if calculate_offset:
+            return offset
+        else:
+            return Kit(head, face, neck, weapon, trinket)
+
+    def collar(self):
+        offset = self.equipment_offset_past
+        return parse_string(self.blob, offset)
+
+    def level(self):
+        offset = self.collar_offset_past
+        return struct.unpack_from(f'<i', self.blob, offset=offset)[0]
+
+    def coi(self):
+        offset = self.collar_offset_past + 4
+        return struct.unpack_from(f'<d', self.blob, offset=offset)[0]
+
+    def birthday(self):
+        offset = self.collar_offset_past + 12
+        return struct.unpack_from(f'<Q', self.blob, offset=offset)[0]
+
+    def unknown_16(self):
+        offset = self.collar_offset_past + 20
+        return struct.unpack_from(f'<q', self.blob, offset=offset)[0]
+
+    def unknown_17(self):
+        offset = self.collar_offset_past + 28
+        return w_ra_of_lpvls('<Q', '<{length}c', None, 0, self.blob, self.collar_offset_past + 28, 1)[0][0]
+
+    def unknown_19(self):
+        offset = self.unknown_17_offset_past
+        return struct.unpack_from(f'<I', self.blob, offset=offset)[0]
+
+    def unknown_20(self):
+        offset = self.unknown_17_offset_past + 4
+        return struct.unpack_from(f'<Q', self.blob, offset=offset)[0]
+
+    def unknown_21(self):
+        offset = self.unknown_17_offset_past + 12
+        return struct.unpack_from(f'<B', self.blob, offset=offset)[0]
+
+    def unknown_22(self):
+        offset = self.unknown_17_offset_past + 13
+        return struct.unpack_from(f'<B', self.blob, offset=offset)[0]
+
+    def unknown_23(self):
+        offset = self.unknown_17_offset_past + 14
+        return struct.unpack_from(f'<B', self.blob, offset=offset)[0]
+
+    def unknown_24(self):
+        offset = self.unknown_17_offset_past + 15
+        return struct.unpack_from(f'<16I', self.blob, offset=offset)
 
 ParallelHashMapDump = namedtuple('ParallelHashMapDump', ['s_version', 'size', 'capacity', 'hash_table', 'data_table', 'growth_left'])
 def scrape_hash_table(buffer, offset, unpack_string, unpack_size, raw_view=False):
