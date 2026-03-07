@@ -9,7 +9,12 @@ set(HOOK_NAME amoeba)
 # Set language mode
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# possibly does nothing with MSVC; permissive- is set by std:c++20
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+if (MSVC)
+    add_compile_options(/W4)
+endif()
 
 # Define build targets
 #add_executable(${INJECTOR_NAME} WIN32
