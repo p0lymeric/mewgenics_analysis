@@ -4,7 +4,10 @@
 #include "amoeba.hpp"
 #include "debug_console.hpp"
 #include "minhook_support.hpp"
+#include "transaction_logger.hpp"
 
+#include <chrono>
+#include <filesystem>
 #include <windows.h>
 
 // Poor cat's SQL transaction logging
@@ -14,7 +17,18 @@
 //
 // A DLL loader is required to inject this library into Mewgenics.
 
-uint32_t SAVE_SCOPE_COUNTER = 0;
+const uint32_t TLOG_VSID_META = 0;
+const uint32_t TLOG_VSID_INFO = 1;
+const uint32_t TLOG_VSID_SQL = 2;
+const uint32_t TLOG_VSID_SAVEDATA = 3;
+
+struct GlobalContext {
+    uint32_t save_scope_counter;
+    // std::string current_opened_db_path;
+    TransactionLogger *tlogger;
+};
+
+GlobalContext G;
 
 // Mewgenics 1.0.20763 (SHA-256 e6cf210e4d1857b7c36ec33f4092290b7b57fe76cab60bf24345ab20fbf78f8c)
 
@@ -23,11 +37,11 @@ MAKE_MH_HOOK(0x140a02550, void, __cdecl, glaiel__SQLSaveFile__BeginSave, SQLSave
 
     DPRINTFMTPRE("glaiel::SQLSaveFile::BeginSave (this@{:p})\n", static_cast<void *>(thiss));
 
-    if(SAVE_SCOPE_COUNTER == 0) {
+    if(G.save_scope_counter == 0) {
         DPRINTFMT("    prediction: BEGIN TRANSACTION was issued - {}\n", thiss->file_path);
-        SAVE_SCOPE_COUNTER++;
+        G.save_scope_counter++;
     } else {
-        SAVE_SCOPE_COUNTER++;
+        G.save_scope_counter++;
     }
 }
 
@@ -36,13 +50,18 @@ MAKE_MH_HOOK(0x140a025f0, void, __cdecl, glaiel__SQLSaveFile__EndSave, SQLSaveFi
 
     DPRINTFMTPRE("glaiel::SQLSaveFile::EndSave (this@{:p})\n", static_cast<void *>(thiss));
 
-    if(SAVE_SCOPE_COUNTER == 1) {
+    if(G.save_scope_counter == 1) {
         DPRINTFMT("    prediction: COMMIT was issued - {}\n", thiss->file_path);
-        SAVE_SCOPE_COUNTER--;
-    } else if (SAVE_SCOPE_COUNTER == 0) {
+        G.tlogger->select_vsid(TLOG_VSID_SAVEDATA);
+        G.tlogger->set_timestamp_now();
+        G.tlogger->write_int64(std::chrono::duration_cast<std::chrono::microseconds>(std::filesystem::last_write_time(thiss->file_path).time_since_epoch()).count());
+        G.tlogger->write_string(std::filesystem::path(thiss->file_path).filename().string());
+        G.tlogger->write_blob_from_file(thiss->file_path);
+        G.save_scope_counter--;
+    } else if (G.save_scope_counter == 0) {
         DPRINTFMT("    save scope counter underflowed--maybe this hook was injected while the game was saving\n", static_cast<void *>(thiss));
     } else {
-        SAVE_SCOPE_COUNTER--;
+        G.save_scope_counter--;
     }
 }
 
@@ -55,6 +74,36 @@ MAKE_MH_HOOK(0x140a01980, void, __cdecl, glaiel__SQLSaveFile__SQL, SQLSaveFile *
         DPRINTFMT(" {}", param);
     }
     DPRINTFMT("\n");
+    G.tlogger->select_vsid(TLOG_VSID_SQL);
+    G.tlogger->set_timestamp_now();
+    G.tlogger->write_int64(params->size);
+    G.tlogger->write_string(query);
+    for(const auto &param : *params) {
+        G.tlogger->write_string(param.name);
+        switch(param.type) {
+            case Blob:
+                G.tlogger->write_blob(param.value.as_blob_ptr, param.length);
+                break;
+            case Text:
+                G.tlogger->write_string(param.value.as_c_str);
+                break;
+            // case WText:
+            //     s += std::format("L\"{}\"", param.value.as_wc_str);
+            //     break;
+            // case Integer32:
+            //     s += std::format("{}", param.value.as_int);
+            //     break;
+            case Integer:
+                G.tlogger->write_int64(param.value.as_int64);
+                break;
+            case Real:
+                G.tlogger->write_double(param.value.as_double);
+                break;
+            default:
+                G.tlogger->write_na();
+                break;
+        }
+    }
 }
 
 bool install_hooks() {
@@ -117,6 +166,9 @@ BOOL WINAPI DllMain(
 
             DPRINTFMTPRE("DllMain DLL_PROCESS_ATTACH\n");
 
+            G.tlogger = new TransactionLogger("C:\\Games\\test.tlog");
+            G.tlogger->write_header();
+
             if(!install_hooks()) {
                 // we f'd around and found out...
 
@@ -150,6 +202,8 @@ BOOL WINAPI DllMain(
             } else {
                 // process is exiting, no need to clean up
             }
+            G.tlogger->reset();
+            delete G.tlogger;
             break;
     }
     // Successful DLL_PROCESS_ATTACH.
