@@ -4,7 +4,6 @@
 #include "amoeba.hpp"
 #include "debug_console.hpp"
 #include "minhook_support.hpp"
-#include "transaction_logger.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -17,64 +16,24 @@
 //
 // A DLL loader is required to inject this library into Mewgenics.
 
-const uint32_t TLOG_VSID_META = 0;
-const uint32_t TLOG_VSID_INFO = 1;
-const uint32_t TLOG_VSID_SQL = 2;
-const uint32_t TLOG_VSID_SAVEDATA = 3;
-
-struct GlobalContext {
-    uint32_t save_scope_counter;
-    // std::string current_opened_db_path;
-    TransactionLogger *tlogger;
-};
-
 GlobalContext G;
 
+// These addresses were extracted from Mewgenics.exe
 // Mewgenics 1.0.20763 (SHA-256 e6cf210e4d1857b7c36ec33f4092290b7b57fe76cab60bf24345ab20fbf78f8c)
+const uintptr_t ADDRESS_glaiel__SQLSaveFile__BeginSave = 0x140a02550;
+const uintptr_t ADDRESS_glaiel__SQLSaveFile__EndSave = 0x140a025f0;
+const uintptr_t ADDRESS_glaiel__SQLSaveFile__SQL = 0x140a01980;
 
-MAKE_MH_HOOK(0x140a02550, void, __cdecl, glaiel__SQLSaveFile__BeginSave, SQLSaveFile* thiss) {
-    glaiel__SQLSaveFile__BeginSave_hook.orig(thiss);
-
-    DPRINTFMTPRE("glaiel::SQLSaveFile::BeginSave (this@{:p})\n", static_cast<void *>(thiss));
-
-    if(G.save_scope_counter == 0) {
-        DPRINTFMT("    prediction: BEGIN TRANSACTION was issued - {}\n", thiss->file_path);
-        G.save_scope_counter++;
-    } else {
-        G.save_scope_counter++;
-    }
+void write_db_to_log(std::string file_path) {
+    G.tlogger->select_vsid(TlogVsid::SaveData);
+    G.tlogger->set_timestamp_now();
+    G.tlogger->write_int64(std::chrono::duration_cast<std::chrono::microseconds>(std::filesystem::last_write_time(file_path).time_since_epoch()).count());
+    G.tlogger->write_string(std::filesystem::path(file_path).filename().string());
+    G.tlogger->write_blob_from_file(file_path);
 }
 
-MAKE_MH_HOOK(0x140a025f0, void, __cdecl, glaiel__SQLSaveFile__EndSave, SQLSaveFile* thiss) {
-    glaiel__SQLSaveFile__EndSave_hook.orig(thiss);
-
-    DPRINTFMTPRE("glaiel::SQLSaveFile::EndSave (this@{:p})\n", static_cast<void *>(thiss));
-
-    if(G.save_scope_counter == 1) {
-        DPRINTFMT("    prediction: COMMIT was issued - {}\n", thiss->file_path);
-        G.tlogger->select_vsid(TLOG_VSID_SAVEDATA);
-        G.tlogger->set_timestamp_now();
-        G.tlogger->write_int64(std::chrono::duration_cast<std::chrono::microseconds>(std::filesystem::last_write_time(thiss->file_path).time_since_epoch()).count());
-        G.tlogger->write_string(std::filesystem::path(thiss->file_path).filename().string());
-        G.tlogger->write_blob_from_file(thiss->file_path);
-        G.save_scope_counter--;
-    } else if (G.save_scope_counter == 0) {
-        DPRINTFMT("    save scope counter underflowed--maybe this hook was injected while the game was saving\n", static_cast<void *>(thiss));
-    } else {
-        G.save_scope_counter--;
-    }
-}
-
-MAKE_MH_HOOK(0x140a01980, void, __cdecl, glaiel__SQLSaveFile__SQL, SQLSaveFile *thiss, HostStdString query, PodBufferPreallocated<SqlParam, 4> *params, void *arg3) {
-    glaiel__SQLSaveFile__SQL_hook.orig(thiss, query, params, arg3);
-
-    DPRINTFMTPRE("glaiel::SQLSaveFile::SQL (this@{:p})\n", static_cast<void *>(thiss));
-    DPRINTFMT("    {}", query);
-    for(const auto &param : *params) {
-        DPRINTFMT(" {}", param);
-    }
-    DPRINTFMT("\n");
-    G.tlogger->select_vsid(TLOG_VSID_SQL);
+void write_sql_to_log(HostStdString query, PodBufferPreallocated<SqlParam, 4> *params) {
+    G.tlogger->select_vsid(TlogVsid::Sql);
     G.tlogger->set_timestamp_now();
     G.tlogger->write_int64(params->size);
     G.tlogger->write_string(query);
@@ -104,6 +63,71 @@ MAKE_MH_HOOK(0x140a01980, void, __cdecl, glaiel__SQLSaveFile__SQL, SQLSaveFile *
                 break;
         }
     }
+}
+
+MAKE_MH_HOOK(ADDRESS_glaiel__SQLSaveFile__BeginSave,
+    void, __cdecl, glaiel__SQLSaveFile__BeginSave,
+    SQLSaveFile* thiss
+) {
+    glaiel__SQLSaveFile__BeginSave_hook.orig(thiss);
+
+    DPRINTFMTPRE("glaiel::SQLSaveFile::BeginSave (this@{:p})\n", static_cast<void *>(thiss));
+
+    if(G.save_scope_counter == 0) {
+        DPRINTFMT("    prediction: BEGIN TRANSACTION was issued - {}\n", thiss->file_path);
+        G.save_scope_counter++;
+    } else {
+        G.save_scope_counter++;
+    }
+}
+
+MAKE_MH_HOOK(ADDRESS_glaiel__SQLSaveFile__EndSave,
+    void, __cdecl, glaiel__SQLSaveFile__EndSave,
+    SQLSaveFile* thiss
+) {
+    glaiel__SQLSaveFile__EndSave_hook.orig(thiss);
+
+    DPRINTFMTPRE("glaiel::SQLSaveFile::EndSave (this@{:p})\n", static_cast<void *>(thiss));
+
+    if(G.save_scope_counter == 1) {
+        DPRINTFMT("    prediction: COMMIT was issued - {}\n", thiss->file_path);
+        write_db_to_log(thiss->file_path);
+        G.save_scope_counter--;
+    } else if (G.save_scope_counter == 0) {
+        DPRINTFMT("    save scope counter underflowed--maybe this hook was injected while the game was saving\n", static_cast<void *>(thiss));
+    } else {
+        G.save_scope_counter--;
+    }
+}
+
+MAKE_MH_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
+    void, __cdecl, glaiel__SQLSaveFile__SQL,
+    SQLSaveFile *thiss, HostStdString query, PodBufferPreallocated<SqlParam, 4> *params, HostStdFunction<void (sqlite3_stmt *stmt)> *callback
+) {
+    // can hook the callback thusly but would need to locate sqlite3 symbols in the
+    // host executable or link our own to be useful
+    // std::function<void (sqlite3_stmt *)> callback_intercept = [callback](sqlite3_stmt *stmt) {
+    //     DPRINTFMTPRE("hi mom!\n");
+    //     (*callback)(stmt);
+    // };
+    // glaiel__SQLSaveFile__SQL_hook.orig(thiss, query, params, &callback_intercept);
+
+    glaiel__SQLSaveFile__SQL_hook.orig(thiss, query, params, callback);
+
+    DPRINTFMTPRE("glaiel::SQLSaveFile::SQL (this@{:p})\n", static_cast<void *>(thiss));
+    // log the save file if it is the first time we witnessed it referenced
+    // TODO does not account for in-game savefile deletes (would need to snoop deletions)
+    // or perhaps out-of-game manipulations (would need filesystem monitor)
+    if(G.witnessed_db_paths.insert(thiss->file_path).second) {
+        write_db_to_log(thiss->file_path);
+    }
+    DPRINTFMT("    {}", query);
+    for(const auto &param : *params) {
+        DPRINTFMT(" {}", param);
+    }
+    DPRINTFMT("\n");
+    // NB very noisy at times; sometimes the game queries properties multiple times per second
+    write_sql_to_log(query, params);
 }
 
 bool install_hooks() {
@@ -166,6 +190,7 @@ BOOL WINAPI DllMain(
 
             DPRINTFMTPRE("DllMain DLL_PROCESS_ATTACH\n");
 
+            DPRINTFMTPRE("Working directory: {}\n", std::filesystem::current_path().string());
             G.tlogger = new TransactionLogger("C:\\Games\\test.tlog.lz4", true);
 
             if(!install_hooks()) {

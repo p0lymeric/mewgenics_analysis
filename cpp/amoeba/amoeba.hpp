@@ -1,11 +1,39 @@
 #pragma once
 
+#include "transaction_logger.hpp"
+
 #include <cstdint>
+#include <set>
 #include <string>
+#include <functional>
 #include <format>
+
+// INTERNAL DECLARATIONS
+
+enum TlogVsid : uint32_t {
+    Meta = 0,
+    Info = 1,
+    Sql = 2,
+    SaveData = 3,
+};
+
+struct GlobalContext {
+    uint32_t save_scope_counter;
+    // std::string current_opened_db_path;
+    std::set<std::string> witnessed_db_paths;
+    TransactionLogger *tlogger;
+};
+
+
+// HOST STRUCTURE DECLARATIONS
 
 // STL objects can be manipulated so long as we roughly match compiler version and build profile
 typedef std::string HostStdString;
+template<class T>
+using HostStdFunction = std::function<T>;
+
+// treat sqlite objects as opaque for now
+typedef void sqlite3_stmt;
 
 // overall size is not correct, we only care about file_path
 struct SQLSaveFile {
