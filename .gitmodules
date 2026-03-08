@@ -1,3 +1,6 @@
 [submodule "cpp/lib/minhook"]
 	path = cpp/lib/minhook
 	url = https://github.com/TsudaKageyu/minhook
+[submodule "cpp/lib/lz4"]
+	path = cpp/lib/lz4
+	url = https://github.com/lz4/lz4

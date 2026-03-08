@@ -25,7 +25,7 @@ add_library(${HOOK_NAME} SHARED
 )
 
 #target_link_libraries(${INJECTOR_NAME} PRIVATE minhook)
-target_link_libraries(${HOOK_NAME} PRIVATE minhook)
+target_link_libraries(${HOOK_NAME} PRIVATE minhook lz4)
 
 #install(TARGETS ${TARGET_NAME} ${INJECTOR_NAME} RUNTIME DESTINATION bin)
 install(TARGETS ${TARGET_NAME} ${HOOK_NAME} RUNTIME DESTINATION bin)

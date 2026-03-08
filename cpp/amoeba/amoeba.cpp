@@ -166,8 +166,7 @@ BOOL WINAPI DllMain(
 
             DPRINTFMTPRE("DllMain DLL_PROCESS_ATTACH\n");
 
-            G.tlogger = new TransactionLogger("C:\\Games\\test.tlog");
-            G.tlogger->write_header();
+            G.tlogger = new TransactionLogger("C:\\Games\\test.tlog.lz4", true);
 
             if(!install_hooks()) {
                 // we f'd around and found out...
