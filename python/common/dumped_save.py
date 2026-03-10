@@ -8,8 +8,9 @@ CatCoiMemo = namedtuple('CatCoiMemo', ['parent_a_id', 'parent_b_id', 'coi'])
 BodyPartDescriptor = namedtuple('BodyPartDescriptor', ['part_sprite_idx', 'texture_sprite_idx', 'unknown_0', 'unknown_1_nonzero_on_arms_and_legs', 'unknown_2'])
 BodyParts = namedtuple('BodyParts', ['texture_sprite_idx', 'heritable_palette_idx', 'collar_palette_idx', 'body', 'head', 'tail', 'leg1', 'leg2', 'arm1', 'arm2', 'lefteye', 'righteye', 'lefteyebrow', 'righteyebrow', 'leftear', 'rightear', 'mouth', 'unknown_0', 'unknown_1', 'voice', 'pitch'])
 CatStats = namedtuple('CatStats', ['str', 'dex', 'con', 'int', 'spd', 'cha', 'lck'])
-CampaignStats = namedtuple('CampaignStats', ['hp', 'dead', 'unknown_0', 'unknown_1', 'size', 'unknown_data'])
-PassiveAbility = namedtuple('PassiveAbility', ['name', 'unknown_0'])
+# CatInjuries = namedtuple('CatInjuries', ['broken_paw', 'torn_tendon', 'broken_rib', 'concussion', 'cha_injury', 'spd_injury', 'lck_injury'])
+CampaignStats = namedtuple('CampaignStats', ['hp', 'dead', 'unknown_0', 'unknown_1', 'event_stat_modifiers'])
+# PassiveAbility = namedtuple('PassiveAbility', ['name', 'unknown_0'])
 Equipment = namedtuple('Equipment', ['version', 'has_equipment', 'name', 'unknown_0', 'unknown_1', 'unknown_2', 'unknown_3', 'unknown_4', 'unknown_5', 'unknown_6'])
 Kit = namedtuple('Kit', ['head', 'face', 'neck', 'weapon', 'trinket'])
 
@@ -47,19 +48,19 @@ def w_ra_of_lpvls(
         offset += sizeof_footer
     return data, offset
 
-def parse_string(blob, initial_offset, calculate_offset=False):
+def parse_string(blob, initial_offset, collect_data=True):
     offset = initial_offset
     length = struct.unpack_from('<Q', blob, offset=offset)[0]
     offset += 8
-    name_bytes = struct.unpack_from(f'<{length}s', blob, offset=offset)[0]
-    offset += length
-    if calculate_offset:
-        return offset
+    if collect_data:
+        s = struct.unpack_from(f'<{length}s', blob, offset=offset)[0].decode('utf-8')
     else:
-        return name_bytes.decode('utf-8')
+        s = None
+    offset += length
+    return s, offset
 
 class Cat:
-    def __init__(self, sql_key, blob):
+    def __init__(self, sql_key, blob, verify_assumptions=True):
         self.sql_key = sql_key
         self.blob = blob
 
@@ -73,18 +74,20 @@ class Cat:
         self.unknown_2_offset_past = self.nameplate_symbol_offset_past + 24 + self.unknown_2_length_bytes
         self.voice_length_bytes = struct.unpack_from('<Q', self.blob, offset=self.unknown_2_offset_past + 368)[0]
         self.voice_offset_past = self.unknown_2_offset_past + 376 + self.voice_length_bytes
-        self.unknown_14_length_bytes = struct.unpack_from('<Q', self.blob, offset=self.voice_offset_past + 92)[0]
-        self.unknown_14_offset_past = self.voice_offset_past + 100 + self.unknown_14_length_bytes
-        self.campaign_stats_inner_length_dwords = struct.unpack_from('<I', self.blob, offset=self.unknown_14_offset_past + 10)[0]
-        self.campaign_stats_inner_offset_past = self.unknown_14_offset_past + 14 + self.campaign_stats_inner_length_dwords * 4
+        _, self.last_injury_debuffed_stat_offset_past = parse_string(self.blob, self.voice_offset_past + 92, collect_data=False)
+        self.campaign_stats_inner_offset_past = self.campaign_stats(calculate_offset=True)
         _, self.actives_basic_offset_past = w_ra_of_lpvls('<Q', '<{length}s', None, 0, self.blob, self.campaign_stats_inner_offset_past, 2, collect_data=False)
         _, self.actives_accessible_offset_past = w_ra_of_lpvls('<Q', '<{length}s', None, 0, self.blob, self.actives_basic_offset_past, 4, collect_data=False)
         _, self.actives_inherited_offset_past = w_ra_of_lpvls('<Q', '<{length}s', None, 0, self.blob, self.actives_accessible_offset_past, 4, collect_data=False)
         _, self.passives_offset_past = w_ra_of_lpvls('<Q', '<{length}s', '<i', 0, self.blob, self.actives_inherited_offset_past, 2, collect_data=False)
         _, self.mutations_offset_past = w_ra_of_lpvls('<Q', '<{length}s', '<i', 0, self.blob, self.passives_offset_past, 2, collect_data=False)
         self.equipment_offset_past = self.equipment(calculate_offset=True)
-        self.collar_offset_past = parse_string(self.blob, self.equipment_offset_past, calculate_offset=True)
-        _, self.unknown_17_offset_past = w_ra_of_lpvls('<Q', '<{length}c', None, 0, self.blob, self.collar_offset_past + 28, 1, collect_data=False)
+        _, self.collar_offset_past = parse_string(self.blob, self.equipment_offset_past, collect_data=False)
+        _, self.unknown_17_offset_past = w_ra_of_lpvls('<Q', '<{length}b', None, 0, self.blob, self.collar_offset_past + 28, 1, collect_data=False)
+        # always verify full decode
+        assert(self.unknown_17_offset_past + 79 == len(blob))
+
+        self.verify_assumptions()
 
     def version(self):
         offset = 0
@@ -143,7 +146,7 @@ class Cat:
 
     def lover_sql_key(self):
         offset = self.unknown_2_offset_past + 20
-        return struct.unpack_from(f'<Q', self.blob, offset=offset)[0]
+        return struct.unpack_from(f'<q', self.blob, offset=offset)[0]
 
     def unknown_7(self):
         offset = self.unknown_2_offset_past + 28
@@ -155,7 +158,7 @@ class Cat:
 
     def hater_sql_key(self):
         offset = self.unknown_2_offset_past + 44
-        return struct.unpack_from(f'<Q', self.blob, offset=offset)[0]
+        return struct.unpack_from(f'<q', self.blob, offset=offset)[0]
 
     def unknown_9(self):
         offset = self.unknown_2_offset_past + 52
@@ -199,23 +202,21 @@ class Cat:
         offset = self.voice_offset_past + 8 + 56
         return CatStats._make(struct.unpack_from(f'<7i', self.blob, offset=offset))
 
-    def unknown_14(self):
-        offset = self.voice_offset_past + 100
-        str_bytes = struct.unpack_from(f'<{self.unknown_14_length_bytes}s', self.blob, offset=offset)[0]
-        return str_bytes.decode('utf-8')
+    def last_injury_debuffed_stat(self):
+        offset = self.voice_offset_past + 92
+        return parse_string(self.blob, offset)[0]
 
-    def campaign_stats(self):
-        offset = self.unknown_14_offset_past
-        unknown_0, alive, unknown_1, unknown_2, unknown_array_size = struct.unpack_from(f'<i??iI', self.blob, offset=offset)
+    def campaign_stats(self, calculate_offset=False):
+        offset = self.last_injury_debuffed_stat_offset_past
+        unknown_0, alive, unknown_1, unknown_2, array_size = struct.unpack_from(f'<i??iI', self.blob, offset=offset)
 
         offset += 14
-        # assert(offset == self.unknown_14_offset_past + 14)
-        unknown_array = struct.unpack_from(f'<{self.campaign_stats_inner_length_dwords}i', self.blob, offset=offset)
+        array, offset = w_ra_of_lpvls('<Q', '<{length}s', '<i', 0, self.blob, offset, array_size, data_struct_processor=lambda h, d, f: (d[0].decode('utf-8'), f[0]), collect_data=not calculate_offset)
 
-        # offset += self.unknown_15_length_dwords * 4
-        # assert(offset == self.campaign_stats_inner_offset_past)
-
-        return CampaignStats(unknown_0, alive, unknown_1, unknown_2, unknown_array_size, unknown_array)
+        if calculate_offset:
+            return offset
+        else:
+            return CampaignStats(unknown_0, alive, unknown_1, unknown_2, array)
 
     def actives_basic(self):
         offset = self.campaign_stats_inner_offset_past
@@ -247,20 +248,20 @@ class Cat:
 
         offset += 5
         if has_equipment:
-            name, offset = w_ra_of_lpvls('<Q', '<{length}s', None, 0, self.blob, offset, 1, data_struct_processor=lambda h, d, f: d[0].decode('utf-8'), collect_data=not calculate_offset)
-            unknown_0, offset = w_ra_of_lpvls('<Q', '<{length}s', None, 0, self.blob, offset, 1, data_struct_processor=lambda h, d, f: d[0].decode('utf-8'), collect_data=not calculate_offset)
+            name, offset = parse_string(self.blob, offset, collect_data=not calculate_offset)
+            unknown_0, offset = parse_string(self.blob, offset, collect_data=not calculate_offset)
             if calculate_offset:
                 offset += 18
                 return None, offset
             else:
-                unknowns_1_6 = struct.unpack_from(f'<iiiicc', self.blob, offset=offset)
+                unknowns_1_6 = struct.unpack_from(f'<iiiibb', self.blob, offset=offset)
                 offset += 18
                 return Equipment(version, has_equipment, name, unknown_0, *unknowns_1_6), offset
         else:
             if calculate_offset:
                 return None, offset
             else:
-                return Equipment(version, has_equipment, '', '', 0, 0, 0, 0, 0, 0), offset
+                return Equipment(version, has_equipment, None, None, None, None, None, None, None, None), offset
 
     def equipment(self, calculate_offset=False):
         offset = self.mutations_offset_past
@@ -276,7 +277,7 @@ class Cat:
 
     def collar(self):
         offset = self.equipment_offset_past
-        return parse_string(self.blob, offset)
+        return parse_string(self.blob, offset)[0]
 
     def level(self):
         offset = self.collar_offset_past
@@ -296,7 +297,7 @@ class Cat:
 
     def unknown_17(self):
         offset = self.collar_offset_past + 28
-        return w_ra_of_lpvls('<Q', '<{length}c', None, 0, self.blob, self.collar_offset_past + 28, 1)[0][0]
+        return w_ra_of_lpvls('<Q', '<{length}b', None, 0, self.blob, self.collar_offset_past + 28, 1)[0]
 
     def unknown_19(self):
         offset = self.unknown_17_offset_past
@@ -318,9 +319,120 @@ class Cat:
         offset = self.unknown_17_offset_past + 14
         return struct.unpack_from(f'<B', self.blob, offset=offset)[0]
 
-    def unknown_24(self):
+    def counters(self):
         offset = self.unknown_17_offset_past + 15
         return struct.unpack_from(f'<16I', self.blob, offset=offset)
+
+    def as_dict(self):
+        return {
+            'version': self.version(),
+            'entropy': self.entropy(),
+            'name': self.name(),
+            'nameplate_symbol': self.nameplate_symbol(),
+            'sex': self.sex(),
+            'sex_dup': self.sex_dup(),
+            'status_flags': self.status_flags(),
+            'unknown_2': self.unknown_2(),
+            'unknown_3': self.unknown_3(),
+            'libido': self.libido(),
+            'sexuality': self.sexuality(),
+            'lover_sql_key': self.lover_sql_key(),
+            'unknown_7': self.unknown_7(),
+            'aggression': self.aggression(),
+            'hater_sql_key': self.hater_sql_key(),
+            'unknown_9': self.unknown_9(),
+            'unknown_10': self.unknown_10(),
+            'body_parts': self.body_parts(),
+            'stats_heritable': self.stats_heritable(),
+            'stats_delta_levelling': self.stats_delta_levelling(),
+            'stats_delta_injuries': self.stats_delta_injuries(),
+            'last_injury_debuffed_stat': self.last_injury_debuffed_stat(),
+            'campaign_stats': self.campaign_stats(),
+            'actives_basic': self.actives_basic(),
+            'actives_accessible': self.actives_accessible(),
+            'actives_inherited': self.actives_inherited(),
+            'passives': self.passives(),
+            'mutations': self.mutations(),
+            'equipment': self.equipment(),
+            'collar': self.collar(),
+            'level': self.level(),
+            'coi': self.coi(),
+            'birthday': self.birthday(),
+            'unknown_16': self.unknown_16(),
+            'unknown_17': self.unknown_17(),
+            'unknown_19': self.unknown_19(),
+            'unknown_20': self.unknown_20(),
+            'unknown_21': self.unknown_21(),
+            'unknown_22': self.unknown_22(),
+            'unknown_23': self.unknown_23(),
+            'counters': self.counters(),
+        }
+
+    def verify_assumptions(self):
+        try:
+            self.assumptions()
+        except:
+            # with open('bad_kitty.bin', 'wb') as f:
+            #     f.write(self.blob)
+            raise Exception
+
+    def assumptions(self):
+        # Assert that we're working with a known version
+        assert(self.version() == 19)
+
+        # Does sex ever differ from sex_dup?
+        assert(self.sex() == self.sex_dup())
+
+        # TODO coverage collector on status_flags
+
+        # Do unknown_2 and unknown_3 always carry a value of ('None', 1)?
+        assert(self.unknown_2() == 'None')
+        assert(self.unknown_3() == 1)
+
+        # Does lover_sql_key == -1 => unknown_7 == 0.0?
+        assert(implies(self.lover_sql_key() == -1, self.unknown_7() == 0.0))
+        # may not be true depending on implementation, but assert anyway
+        assert(cimplies(self.lover_sql_key() == -1, self.unknown_7() == 0.0))
+
+        # Does hater_sql_key == -1 => unknown_9 == 0.0?
+        assert(implies(self.hater_sql_key() == -1, self.unknown_9() == 0.0))
+        # may not be true depending on implementation, but assert anyway
+        assert(cimplies(self.hater_sql_key() == -1, self.unknown_9() == 0.0))
+
+        # Can these fields ever outside [3, 7]?
+        for stat in self.stats_heritable():
+            assert(stat >= 3 and stat <= 7)
+
+        # Can these fields ever be negative?
+        # yes, events modify this field too
+        #for stat in self.stats_delta_levelling():
+            # assert(stat >= 0)
+
+        # Can these fields ever be positive?
+        for stat in self.stats_delta_injuries():
+            assert(stat <= 0)
+
+        # Does this field always carry a value of -1?
+        assert(self.unknown_16() == -1)
+
+        # Do injury counts correspond to stats_delta_injuries?
+        for i, stat in enumerate(self.stats_delta_injuries()):
+            # swizzle 4 and 5
+            if i == 4:
+                ii = 5
+            elif i == 5:
+                ii = 4
+            else:
+                ii = i
+            assert(self.counters()[ii] == -stat)
+
+def implies(a, b):
+    # a => b
+    return not a or b
+
+def cimplies(a, b):
+    # a <= b
+    return not b or a
 
 ParallelHashMapDump = namedtuple('ParallelHashMapDump', ['s_version', 'size', 'capacity', 'hash_table', 'data_table', 'growth_left'])
 def scrape_hash_table(buffer, offset, unpack_string, unpack_size, raw_view=False):

@@ -15,26 +15,46 @@
 // flushes a transaction to disk via SQL COMMIT.
 //
 // A DLL loader is required to inject this library into Mewgenics.
+//
+// polymeric 2026
 
 GlobalContext G;
 
 // These addresses were extracted from Mewgenics.exe
+// They are expressed relative to a canonical ImageBase of 0x140000000
 // Mewgenics 1.0.20763 (SHA-256 e6cf210e4d1857b7c36ec33f4092290b7b57fe76cab60bf24345ab20fbf78f8c)
 const uintptr_t ADDRESS_glaiel__SQLSaveFile__BeginSave = 0x140a02550;
 const uintptr_t ADDRESS_glaiel__SQLSaveFile__EndSave = 0x140a025f0;
 const uintptr_t ADDRESS_glaiel__SQLSaveFile__SQL = 0x140a01980;
 
+// TLOG_SCHEMA_VERSION_HINT is written onto the meta channel to allow for parser versioning
+const uint64_t TLOG_SCHEMA_VERSION_HINT = 1;
+
 void write_db_to_log(std::string file_path) {
     G.tlogger->select_vsid(TlogVsid::SaveData);
     G.tlogger->set_timestamp_now();
-    G.tlogger->write_int64(std::chrono::duration_cast<std::chrono::microseconds>(std::filesystem::last_write_time(file_path).time_since_epoch()).count());
+    int64_t mtime = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::clock_cast<std::chrono::system_clock>(
+            std::filesystem::last_write_time(file_path)
+        ).time_since_epoch()
+    ).count();
+    if constexpr(TLOG_SCHEMA_VERSION_HINT > 0) {
+        // relative to Unix epoch
+        G.tlogger->write_int64(mtime);
+    } else {
+        // relative to Windows FILETIME epoch
+        G.tlogger->write_int64(mtime + 11644473600000000);
+    }
     G.tlogger->write_string(std::filesystem::path(file_path).filename().string());
     G.tlogger->write_blob_from_file(file_path);
 }
 
-void write_sql_to_log(HostStdString query, PodBufferPreallocated<SqlParam, 4> *params) {
+void write_sql_to_log(HostStdString query, PodBufferPreallocated<SqlParam, 4> *params, std::string file_path) {
     G.tlogger->select_vsid(TlogVsid::Sql);
     G.tlogger->set_timestamp_now();
+    if constexpr(TLOG_SCHEMA_VERSION_HINT > 0) {
+        G.tlogger->write_string(std::filesystem::path(file_path).filename().string());
+    }
     G.tlogger->write_int64(params->size);
     G.tlogger->write_string(query);
     for(const auto &param : *params) {
@@ -127,7 +147,7 @@ MAKE_MH_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
     }
     DPRINTFMT("\n");
     // NB very noisy at times; sometimes the game queries properties multiple times per second
-    write_sql_to_log(query, params);
+    write_sql_to_log(query, params, thiss->file_path);
 }
 
 bool install_hooks() {
@@ -177,7 +197,11 @@ BOOL WINAPI DllMain(
     DWORD fdwReason,     // reason for calling function
     LPVOID lpReserved    // reserved
 ) {
-    (void)hinstDLL; // unused argument, suppresses C4100
+    // unused argument, suppresses C4100
+    (void)hinstDLL;
+
+    bool terminate_process = false;
+
     // Perform actions based on the reason for calling.
     switch(fdwReason) {
         case DLL_PROCESS_ATTACH:
@@ -189,16 +213,21 @@ BOOL WINAPI DllMain(
             #endif
 
             DPRINTFMTPRE("DllMain DLL_PROCESS_ATTACH\n");
-
             DPRINTFMTPRE("Working directory: {}\n", std::filesystem::current_path().string());
-            G.tlogger = new TransactionLogger("C:\\Games\\test.tlog.lz4", true);
 
+            // Instantiate the transaction logger
+            G.tlogger = new TransactionLogger("C:\\Games\\test.tlog.lz4", true);
+            // and write a schema hint to the meta channel
+            G.tlogger->select_vsid(TlogVsid::Meta);
+            G.tlogger->set_timestamp_now();
+            G.tlogger->write_int64(TLOG_SCHEMA_VERSION_HINT);
+
+            // Try to install function hooks
             if(!install_hooks()) {
                 // we f'd around and found out...
 
-                // something bad occurred during hook installation
-                // so call TerminateProcess
-                TerminateProcess(GetCurrentProcess(), 1);
+                // if hook installation failed, call TerminateProcess
+                terminate_process = true;
 
                 // instead of conventional exit
                 // return FALSE;
@@ -217,19 +246,34 @@ BOOL WINAPI DllMain(
             // Perform any necessary cleanup.
             DPRINTFMTPRE("DllMain DLL_PROCESS_DETACH\n");
             if(lpReserved == NULL) {
-                // non-fatal unload
+                // try to gracefully remove our hooks if this dll
+                // was unloaded outside a process exit
                 if(!uninstall_hooks()) {
-                    // something bad occurred during unload
-                    // so call TerminateProcess
-                    TerminateProcess(GetCurrentProcess(), 1);
+                    // if hook uninstallation failed, call TerminateProcess
+                    terminate_process = true;
                 }
             } else {
-                // process is exiting, no need to clean up
+                // process is exiting, no need to unhook
             }
-            G.tlogger->reset();
-            delete G.tlogger;
             break;
     }
+
+    if(terminate_process) {
+        DPRINTFMTPRE("An unrecoverable error occurred during function hooking/unhooking.\n");
+    }
+
+    // Always finalize tlogger before exit, even if we plan to terminate the process
+    if(fdwReason == DLL_PROCESS_DETACH || terminate_process) {
+        // write reset to indicate stream end
+        G.tlogger->reset();
+        // then flush and close the log
+        delete G.tlogger;
+    }
+
+    if(terminate_process) {
+        TerminateProcess(GetCurrentProcess(), 1);
+    }
+
     // Successful DLL_PROCESS_ATTACH.
     return TRUE;
 }

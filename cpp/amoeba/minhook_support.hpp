@@ -3,6 +3,11 @@
 #include <windows.h>
 #include "MinHook.h"
 
+// Wraps much of the boilerplate and declarations required
+// to hook a function with MinHook.
+//
+// polymeric 2026
+
 #define MAKE_MH_HOOK(address, ret_type, call_conv, name, ...) \
     ret_type call_conv name##_detour(__VA_ARGS__); \
     MH_HookDescriptor<ret_type (call_conv *)(__VA_ARGS__)> name##_hook(address, &name##_detour); \

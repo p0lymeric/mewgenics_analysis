@@ -38,6 +38,11 @@ struct String {
     char data[size];
 } [[sealed, format("format_string_data")]];
 
+struct Vector<S, T> {
+    S size;
+    T data[size];
+};
+
 // FILE LAYOUT
 
 // Set to 19 (0x13) as of Mewgenics 1.0.20695
@@ -187,24 +192,28 @@ struct CatStats {
 // Base stats that would be passed to children
 CatStats stats_heritable @ $;
 
-// Stat deltas as a result of levelling
+// Stat deltas as a result of levelling and events
 CatStats stats_delta_levelling @ $;
 
 // Stat deltas as a result of injury
 CatStats stats_delta_injuries @ $;
 
 // stores the string name of a stat
-// unsure what it does
-// not referenced in current decomp database
-String unknown_14 @ $;
+// correlates with last injury
+String last_injury_debuffed_stat @ $;
+
+struct StatModifier {
+    String expression;
+    u32 unknown_0;
+};
 
 struct CampaignStats {
     s32 hp;
     bool dead;
     bool unknown_0;
     s32 unknown_1;
-    u32 size;
-    s32 unknown_data[size];
+    // Stat modifiers from events; next battle only
+    Vector<u32, StatModifier> event_stat_modifiers;
 };
 
 // Possibly tracks adventure stats, or at least HP and other unknown fields
@@ -271,13 +280,8 @@ u64 birthday @ $;
 
 s64 unknown_16 @ $;
 
-struct UnknownCompartmentStruct4 {
-    u64 size;
-    u8 data[size];
-};
-
 // some byte array
-UnknownCompartmentStruct4 unknown_17 @ $;
+Vector<u64, u8> unknown_17 @ $;
 
 // possibly some senility indicator
 u32 unknown_19 @ $;
@@ -290,5 +294,21 @@ u8 unknown_21 @ $;
 u8 unknown_22 @ $;
 u8 unknown_23 @ $;
 
-// would be nice to understand
-u32 unknown_24[16] @ $;
+struct CatInjury {
+    s32 broken_paw;
+    s32 torn_tendon;
+    // note that these two fields are swapped when compared with CatStats
+    s32 broken_rib;
+    s32 concussion;
+    s32 cha_injury;
+    s32 spd_injury;
+    s32 lck_injury;
+};
+
+struct UnknownCompartmentStruct5 {
+    // correlate with injuries minus injury-curing heals
+    CatInjury current_injuries;
+    u32 unknown_0[9];
+};
+
+UnknownCompartmentStruct5 counters @ $;

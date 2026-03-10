@@ -9,6 +9,10 @@
 
 #include "lz4frame.h"
 
+// A binary logger for muxing separate data streams into a single file.
+//
+// polymeric 2026
+
 // version independent header
 // "AMOEBA"
 // byte: version
@@ -35,7 +39,7 @@
 // version 0 full type encodings (s-type for sub-type)
 // 0: binary blob
 // 1-255: aliases to compact type encodings
-// 1: utf-8 string
+// 256: utf-8 string
 
 // version 0 compact type encodings (c-type for compact-type)
 // data types
@@ -44,7 +48,7 @@
 // 2: int64
 // 3: double
 // control types
-// 253(-3): set timestamp in virtual stream
+// 253(-3): set timestamp (signed microseconds since Unix epoch)
 // 254(-2): select virtual stream
 // 255(-1): end of physical stream; reset all virtual stream state
 
@@ -101,14 +105,14 @@ public:
         this->write_compact_record(ctype, &vsid, 4, write_full, vsid);
     }
 
-    void set_timestamp(uint64_t timestamp_us_epoch, bool write_full=false) {
+    void set_timestamp(int64_t timestamp_us_unix_epoch, bool write_full=false) {
         const uint32_t ctype = static_cast<uint8_t>(CompactRecordCTypes::SetTimestamp);
-        this->write_compact_record(ctype, &timestamp_us_epoch, 8, write_full);
+        this->write_compact_record(ctype, &timestamp_us_unix_epoch, 8, write_full);
     }
 
     void set_timestamp_now(bool write_full=false) {
-        uint64_t timestamp_us_epoch = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock().now().time_since_epoch()).count();
-        this->set_timestamp(timestamp_us_epoch, write_full);
+        int64_t timestamp_us_unix_epoch = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock().now().time_since_epoch()).count();
+        this->set_timestamp(timestamp_us_unix_epoch, write_full);
     }
 
     void write_na(bool write_full=false) {
@@ -116,7 +120,7 @@ public:
         this->write_compact_record(ctype, nullptr, 0, write_full);
     }
 
-    void write_int64(uint64_t val, bool write_full=false) {
+    void write_int64(int64_t val, bool write_full=false) {
         const uint32_t ctype = static_cast<uint8_t>(CompactRecordCTypes::Int64);
         this->write_compact_record(ctype, &val, 8, write_full);
     }

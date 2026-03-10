@@ -8,6 +8,10 @@
 #include <functional>
 #include <format>
 
+// Main program declarations.
+//
+// polymeric 2026
+
 // INTERNAL DECLARATIONS
 
 enum TlogVsid : uint32_t {

@@ -5,6 +5,10 @@
 #include <chrono>
 #include <windows.h>
 
+// Debug printing facilities.
+//
+// polymeric 2026
+
 #ifdef ENABLE_DEBUG_CONSOLE
 template<class... Args>
 void printfmt(std::format_string<Args...> fmt, Args&&... args) {

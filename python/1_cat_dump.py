@@ -36,7 +36,7 @@ def main():
         stats_heritable = v.stats_heritable()
         stats_delta_levelling = v.stats_delta_levelling()
         stats_delta_injuries = v.stats_delta_injuries()
-        unknown_14 = v.unknown_14()
+        last_injury_debuffed_stat = v.last_injury_debuffed_stat()
         campaign_stats = v.campaign_stats()
         actives_basic = v.actives_basic()
         actives_accessible = v.actives_accessible()
@@ -55,7 +55,7 @@ def main():
         unknown_21 = v.unknown_21()
         unknown_22 = v.unknown_22()
         unknown_23 = v.unknown_23()
-        unknown_24 = v.unknown_24()
+        counters = v.counters()
 
         print(f'{k:08d} {name}')
         print(f'0x{entropy:x} v{version}')
@@ -70,7 +70,7 @@ def main():
         print(f'{stats_heritable}')
         print(f'{stats_delta_levelling}')
         print(f'{stats_delta_injuries}')
-        print(f'{unknown_14}')
+        print(f'{last_injury_debuffed_stat}')
         print(f'{campaign_stats}')
         print(f'{actives_basic}')
         print(f'{actives_accessible}')
@@ -89,7 +89,7 @@ def main():
         print(f'{unknown_21}')
         print(f'{unknown_22}')
         print(f'{unknown_23}')
-        print(f'{unknown_24}')
+        print(f'{counters}')
 
 if __name__ == '__main__':
     main()
