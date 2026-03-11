@@ -4,3 +4,6 @@
 [submodule "cpp/lib/lz4"]
 	path = cpp/lib/lz4
 	url = https://github.com/lz4/lz4
+[submodule "cpp/lib/detours"]
+	path = cpp/lib/detours
+	url = https://github.com/microsoft/detours

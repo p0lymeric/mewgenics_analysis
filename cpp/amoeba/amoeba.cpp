@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <windows.h>
 
+#include "detours.h"
+
 // Poor cat's SQL transaction logging
 //
 // Takes a copy of the save file every time Mewgenics
@@ -200,6 +202,10 @@ BOOL WINAPI DllMain(
     // unused argument, suppresses C4100
     (void)hinstDLL;
 
+    if(DetourIsHelperProcess()) {
+        return TRUE;
+    }
+
     bool terminate_process = false;
 
     // Perform actions based on the reason for calling.
@@ -207,6 +213,8 @@ BOOL WINAPI DllMain(
         case DLL_PROCESS_ATTACH:
             // Initialize once for each new process.
             // Return FALSE to fail DLL load.
+            DetourRestoreAfterWith();
+
             #ifdef ENABLE_DEBUG_CONSOLE
             // Create a console window with which to print log messages
             AllocConsole();
@@ -258,8 +266,14 @@ BOOL WINAPI DllMain(
             break;
     }
 
+    // If we are gracefully detaching, close the console. Otherwise leave the console open,
+    // if only for the split second that a diagnostic print could flicker on screen
     if(terminate_process) {
         DPRINTFMTPRE("An unrecoverable error occurred during function hooking/unhooking.\n");
+    } else if(fdwReason == DLL_PROCESS_DETACH) {
+        #ifdef ENABLE_DEBUG_CONSOLE
+        FreeConsole();
+        #endif
     }
 
     // Always finalize tlogger before exit, even if we plan to terminate the process
