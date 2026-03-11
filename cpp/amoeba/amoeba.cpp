@@ -1,9 +1,11 @@
 // Opens a console on the host process via AllocConsole and uses the host's stdout for writing debug prints
 #define ENABLE_DEBUG_CONSOLE
+// Use Detours function hook implementation instead of MinHook
+#define USE_DETOURS_HOOK_IMPL
 
 #include "amoeba.hpp"
 #include "debug_console.hpp"
-#include "minhook_support.hpp"
+#include "function_hook.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -87,7 +89,7 @@ void write_sql_to_log(HostStdString query, PodBufferPreallocated<SqlParam, 4> *p
     }
 }
 
-MAKE_MH_HOOK(ADDRESS_glaiel__SQLSaveFile__BeginSave,
+MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__BeginSave,
     void, __cdecl, glaiel__SQLSaveFile__BeginSave,
     SQLSaveFile* thiss
 ) {
@@ -103,7 +105,7 @@ MAKE_MH_HOOK(ADDRESS_glaiel__SQLSaveFile__BeginSave,
     }
 }
 
-MAKE_MH_HOOK(ADDRESS_glaiel__SQLSaveFile__EndSave,
+MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__EndSave,
     void, __cdecl, glaiel__SQLSaveFile__EndSave,
     SQLSaveFile* thiss
 ) {
@@ -122,7 +124,7 @@ MAKE_MH_HOOK(ADDRESS_glaiel__SQLSaveFile__EndSave,
     }
 }
 
-MAKE_MH_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
+MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
     void, __cdecl, glaiel__SQLSaveFile__SQL,
     SQLSaveFile *thiss, HostStdString query, PodBufferPreallocated<SqlParam, 4> *params, HostStdFunction<void (sqlite3_stmt *stmt)> *callback
 ) {
@@ -165,9 +167,19 @@ bool install_hooks() {
 
     DPRINTFMTPRE("Executable base VA is at: 0x{:x}\n", p_actual_base);
 
+    #ifdef USE_DETOURS_HOOK_IMPL
+    if(DetourTransactionBegin() != NO_ERROR) {
+        return false;
+    }
+
+    if(DetourUpdateThread(GetCurrentThread()) != NO_ERROR) {
+        return false;
+    }
+    #else
     if(MH_Initialize() != MH_OK) {
         return false;
     }
+    #endif
 
     if(!glaiel__SQLSaveFile__BeginSave_hook.install(p_offset_image_to_actual)) {
         return false;
@@ -181,15 +193,51 @@ bool install_hooks() {
         return false;
     }
 
+    #ifdef USE_DETOURS_HOOK_IMPL
+    if(DetourTransactionCommit() != NO_ERROR) {
+        return false;
+    }
+    #else
+    if(MH_EnableHook(MH_ALL_HOOKS) != MH_OK) {
+        return false;
+    }
+    #endif
+
     return true;
 }
 
 bool uninstall_hooks() {
-    // TODO confirm if MinHook disables hooks as part of uninit
+    #ifdef USE_DETOURS_HOOK_IMPL
+    if(DetourTransactionBegin() != NO_ERROR) {
+        return false;
+    }
 
+    if(DetourUpdateThread(GetCurrentThread()) != NO_ERROR) {
+        return false;
+    }
+
+    if(!glaiel__SQLSaveFile__BeginSave_hook.uninstall()) {
+        return false;
+    }
+
+    if(!glaiel__SQLSaveFile__EndSave_hook.uninstall()) {
+        return false;
+    }
+
+    if(!glaiel__SQLSaveFile__SQL_hook.uninstall()) {
+        return false;
+    }
+
+    if(DetourTransactionCommit() != NO_ERROR) {
+        return false;
+    }
+    #else
+    // MinHook disables and removes hooks as part of uninit
+    // It keeps an internal list so there is no need to iterate ourselves
     if(MH_Uninitialize() != MH_OK) {
         return false;
     }
+    #endif
 
     return true;
 }
