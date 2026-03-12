@@ -31,10 +31,51 @@ struct GlobalContext {
 
 // HOST STRUCTURE DECLARATIONS
 
-// STL objects can be manipulated so long as we roughly match compiler version and build profile
-typedef std::string HostStdString;
+// Host STL objects can be naturally manipulated so long as we roughly match compiler version and build profile
+// ...
+// unless of course we want to make life harder
+// ...
+// "for reasons of sanitization", not to be mistaken for "for reasons of sanity"
+
+struct MsvcReleaseModeXString {
+    union {
+        char _Buf[16];
+        char *_Ptr;
+    } _Bx;
+    uint64_t _Mysize;
+    uint64_t _Myres;
+
+    const char *begin() const {
+        if(this->_Myres < 16) {
+            return &this->_Bx._Buf[0];
+        } else {
+            return this->_Bx._Ptr;
+        }
+    }
+
+    const char *end() const {
+        if(this->_Myres < 16) {
+            return &this->_Bx._Buf[this->_Mysize];
+        } else {
+            return this->_Bx._Ptr + this->_Mysize;
+        }
+    }
+
+    std::string copy_to_native_string() const {
+        return std::string(this->begin(), this->end());
+    }
+};
+template<>
+struct std::formatter<MsvcReleaseModeXString> : std::formatter<std::string> {
+    auto format(const MsvcReleaseModeXString &s, std::format_context& ctx) const {
+        return std::formatter<std::string>::format(s.copy_to_native_string(), ctx);
+    }
+};
+
+// STL type aliases to create a distinction between host and native objects
+typedef MsvcReleaseModeXString HostStdString;
 template<class T>
-using HostStdFunction = std::function<T>;
+using HostStdFunction = void;
 
 // treat sqlite objects as opaque for now
 typedef void sqlite3_stmt;
@@ -42,6 +83,7 @@ typedef void sqlite3_stmt;
 // overall size is not correct, we only care about file_path
 struct SQLSaveFile {
     void *maybe_sqlite3_hdl;
+    // TODO check if this is a std::string
     char *file_path;
     // ... likely more ...
 };

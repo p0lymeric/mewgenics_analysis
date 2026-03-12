@@ -6,11 +6,19 @@ project(Detours)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # possibly does nothing with MSVC; permissive- is set by std:c++20
-# set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-if (MSVC)
-    # Detours 4.0.1 needs permissive C++ flavour for compile
-    add_compile_options(/W4 /permissive)
+if(MSVC)
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        # not clean with Clang in MSVC mode, suppress
+        add_compile_options(/W0)
+    else()
+        # clean with MSVC
+        add_compile_options(/W4)
+    endif()
+elseif(MINGW)
+    # not clean with GCC/Clang in GCC mode, suppress
+    add_compile_options(-w)
 endif()
 
 set(DETOURS_DIR ../../detours)

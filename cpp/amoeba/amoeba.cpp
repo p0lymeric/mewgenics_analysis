@@ -37,11 +37,21 @@ const uint64_t TLOG_SCHEMA_VERSION_HINT = 1;
 void write_db_to_log(std::string file_path) {
     G.tlogger->select_vsid(TlogVsid::SaveData);
     G.tlogger->set_timestamp_now();
+    #if defined(__clang__) && !defined(_MSC_VER)
+    // libc++ does not implement clock_cast
+    int64_t mtime = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::file_clock::to_sys(
+            std::filesystem::last_write_time(file_path)
+        ).time_since_epoch()
+    ).count();
+    #else
+    // STL does not implement to_sys
     int64_t mtime = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::clock_cast<std::chrono::system_clock>(
             std::filesystem::last_write_time(file_path)
         ).time_since_epoch()
     ).count();
+    #endif
     if constexpr(TLOG_SCHEMA_VERSION_HINT > 0) {
         // relative to Unix epoch
         G.tlogger->write_int64(mtime);
@@ -53,7 +63,7 @@ void write_db_to_log(std::string file_path) {
     G.tlogger->write_blob_from_file(file_path);
 }
 
-void write_sql_to_log(HostStdString query, PodBufferPreallocated<SqlParam, 4> *params, std::string file_path) {
+void write_sql_to_log(std::string query, PodBufferPreallocated<SqlParam, 4> *params, std::string file_path) {
     G.tlogger->select_vsid(TlogVsid::Sql);
     G.tlogger->set_timestamp_now();
     if constexpr(TLOG_SCHEMA_VERSION_HINT > 0) {
@@ -126,7 +136,7 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__EndSave,
 
 MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
     void, __cdecl, glaiel__SQLSaveFile__SQL,
-    SQLSaveFile *thiss, HostStdString query, PodBufferPreallocated<SqlParam, 4> *params, HostStdFunction<void (sqlite3_stmt *stmt)> *callback
+    SQLSaveFile *thiss, HostStdString *query, PodBufferPreallocated<SqlParam, 4> *params, HostStdFunction<void (sqlite3_stmt *stmt)> *callback
 ) {
     // can hook the callback thusly but would need to locate sqlite3 symbols in the
     // host executable or link our own to be useful
@@ -136,6 +146,10 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
     // };
     // glaiel__SQLSaveFile__SQL_hook.orig(thiss, query, params, &callback_intercept);
 
+    // note that because we accept query as a bare pointer, we need to sample query before calling the original function
+    std::string query_clone = query->copy_to_native_string();
+
+    // query will be destroyed inside the original function
     glaiel__SQLSaveFile__SQL_hook.orig(thiss, query, params, callback);
 
     DPRINTFMTPRE("glaiel::SQLSaveFile::SQL (this@{:p})\n", static_cast<void *>(thiss));
@@ -145,13 +159,13 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
     if(G.witnessed_db_paths.insert(thiss->file_path).second) {
         write_db_to_log(thiss->file_path);
     }
-    DPRINTFMT("    {}", query);
+    DPRINTFMT("    {}", query_clone);
     for(const auto &param : *params) {
         DPRINTFMT(" {}", param);
     }
     DPRINTFMT("\n");
     // NB very noisy at times; sometimes the game queries properties multiple times per second
-    write_sql_to_log(query, params, thiss->file_path);
+    write_sql_to_log(query_clone, params, thiss->file_path);
 }
 
 bool install_hooks() {
