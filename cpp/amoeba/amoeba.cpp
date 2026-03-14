@@ -136,35 +136,53 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__EndSave,
     }
 }
 
+void glaiel__SQLSaveFile__SQL_CallableLayout1_cb(
+    MsvcFuncNoAlloc<CallableWrapped<glaiel__SQLSaveFile__SQL_CallableLayout1, void (sqlite3_stmt *)>, void (sqlite3_stmt *)> *thiss,
+    sqlite3_stmt **_Args
+) {
+    thiss->_Mystorage._Callee.wrapped->vtable->_Do_call(thiss->_Mystorage._Callee.wrapped, _Args);
+    auto wrapped = thiss->_Mystorage._Callee.wrapped;
+    // FIXME we need to discriminate the actual capture layout based on wrapped->vtable
+    // or some other determinant, since multiple variants do exist (e.g. value reads,
+    // PRAGMA reads, MAX(key) reads), or work with sqlite directly
+    // For now we assume the 7-qword capture buffer is always readable,
+    // and parse the most common case of a value read
+    DPRINTFMT("    resp datatype {}\n", *wrapped->_Mystorage._Callee.sqlite3_datatype);
+    DPRINTFMT("    resp pdata {:p}\n", (void*)wrapped->_Mystorage._Callee.result);
+    // FIXME reals don't parse correctly, strange
+    DPRINTFMT("    resp data {}\n", wrapped->_Mystorage._Callee.result->untrusted_format());
+}
+
 MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
     void, __cdecl, glaiel__SQLSaveFile__SQL,
-    SQLSaveFile *thiss, HostStdString *ref_query, PodBufferPreallocated<SqlParam, 4> *params, HostStdFunction<void (sqlite3_stmt *stmt)> *ref_callback
+    SQLSaveFile *thiss, HostStdString *ref_query, PodBufferPreallocated<SqlParam, 4> *params, HostStdFunctionNoAlloc<glaiel__SQLSaveFile__SQL_CallableLayout1, void (sqlite3_stmt *stmt)> *ref_callback
 ) {
     DPRINTFMTPRE("glaiel::SQLSaveFile::SQL (this@{:p})\n", static_cast<void *>(thiss));
+
+    using CallbackWrapper = MsvcFuncNoAllocWrapper<glaiel__SQLSaveFile__SQL_CallableLayout1, void (sqlite3_stmt *stmt)>;
+    CallbackWrapper callback_wrapper(ref_callback, &glaiel__SQLSaveFile__SQL_CallableLayout1_cb);
 
     // our only opportunity to sample query is before it is passed to the original function
     std::string query_clone = ref_query->copy_to_native_string();
 
-    // can hook the callback like this but would need to locate sqlite3 symbols in the
-    // host executable or link our own to be useful
-    // std::function<void (sqlite3_stmt *)> callback_intercept = [callback](sqlite3_stmt *stmt) {
-    //     DPRINTFMTPRE("hi mom!\n");
-    //     (*callback)(stmt);
-    // };
+    // DPRINTFMT("    Callback info: {}\n", *ref_callback);
+    // DPRINTFMT("    Callback wrapper info: {}\n", *callback_wrapper.as_target_type());
 
-    // query and callback will be destroyed inside the original function
-    glaiel__SQLSaveFile__SQL_hook.orig(thiss, ref_query, params, ref_callback);
+    DPRINTFMT("    {}", query_clone);
+    for(const auto &param : *params) {
+        DPRINTFMT(" {}", param);
+    }
+    DPRINTFMT("\n");
+
+    // query will be destroyed inside the original function
+    // callback will be destroyed by proxy by the original function invoking _Delete_this on callback_wrapper
+    glaiel__SQLSaveFile__SQL_hook.orig(thiss, ref_query, params, callback_wrapper.as_target_type());
 
     // log the save file if it is the first time we witnessed it referenced
     // TODO does not account for in-game savefile deletes
     if(G.witnessed_db_paths.insert(thiss->file_path).second) {
         write_db_to_log(thiss->file_path);
     }
-    DPRINTFMT("    {}", query_clone);
-    for(const auto &param : *params) {
-        DPRINTFMT(" {}", param);
-    }
-    DPRINTFMT("\n");
     // NB very noisy at times; sometimes the game queries properties multiple times per second
     write_sql_to_log(query_clone, params, thiss->file_path);
 }
