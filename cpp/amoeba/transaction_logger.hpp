@@ -70,7 +70,7 @@ enum class FullRecordSTypes : uint32_t {
 
 class TransactionLogger {
 public:
-    TransactionLogger(std::string file_path, bool use_lz4) {
+    TransactionLogger(std::filesystem::path file_path, bool use_lz4) {
         this->file_path = file_path;
         this->file = std::ofstream(file_path, std::ios::binary); // TODO can throw
         this->stream_buffer.resize(this->CHUNK_SIZE);
@@ -149,7 +149,7 @@ public:
 
 private:
     const size_t CHUNK_SIZE = 64 * 1024;
-    std::string file_path;
+    std::filesystem::path file_path;
     std::ofstream file;
     uint8_t format;
     std::vector<char> stream_buffer;

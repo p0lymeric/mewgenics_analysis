@@ -37,6 +37,7 @@ struct GlobalContext {
 // ...
 // "for reasons of sanitization", not to be mistaken for "for reasons of sanity"
 
+// MSVC XString (std::string), as laid out when compiled in Release mode
 struct MsvcReleaseModeXString {
     union {
         char _Buf[16];
@@ -44,6 +45,10 @@ struct MsvcReleaseModeXString {
     } _Bx;
     uint64_t _Mysize;
     uint64_t _Myres;
+
+    // delete the copy constructor to block implicit copying
+    MsvcReleaseModeXString(const MsvcReleaseModeXString&) = delete;
+    MsvcReleaseModeXString& operator=(const MsvcReleaseModeXString&) = delete;
 
     const char *begin() const {
         if(this->_Myres < 16) {
@@ -64,11 +69,19 @@ struct MsvcReleaseModeXString {
     std::string copy_to_native_string() const {
         return std::string(this->begin(), this->end());
     }
+
+    operator std::string() const {
+        return this->copy_to_native_string();
+    }
+
+    operator std::string_view() const {
+        return std::string_view(this->begin(), this->_Mysize);
+    }
 };
 template<>
-struct std::formatter<MsvcReleaseModeXString> : std::formatter<std::string> {
+struct std::formatter<MsvcReleaseModeXString> : std::formatter<std::string_view> {
     auto format(const MsvcReleaseModeXString &s, std::format_context& ctx) const {
-        return std::formatter<std::string>::format(s.copy_to_native_string(), ctx);
+        return std::formatter<std::string_view>::format(s, ctx);
     }
 };
 
@@ -83,13 +96,13 @@ typedef void sqlite3_stmt;
 // overall size is not correct, we only care about file_path
 struct SQLSaveFile {
     void *maybe_sqlite3_hdl;
-    // TODO check if this is a std::string
-    char *file_path;
+    HostStdString file_path;
     // ... likely more ...
 };
 
-enum SqlParamType : uint32_t {
+enum SqlDataType : uint32_t {
     Blob = 1,      // BLOB
+    // TODO double check if this is std::string or heap-allocated char[]
     Text = 2,      // TEXT SQLITE_UTF8
     // treat these as unknown until we encounter them
     // WText = 3,     // TEXT SQLITE_UTF16LE?
@@ -98,8 +111,8 @@ enum SqlParamType : uint32_t {
     Real = 6,    // REAL double
 };
 template<>
-struct std::formatter<SqlParamType> : std::formatter<std::string> {
-    auto format(SqlParamType ty, std::format_context& ctx) const {
+struct std::formatter<SqlDataType> : std::formatter<std::string> {
+    auto format(SqlDataType ty, std::format_context& ctx) const {
         std::string s;
         switch(ty) {
             case Blob:
@@ -128,9 +141,8 @@ struct std::formatter<SqlParamType> : std::formatter<std::string> {
     }
 };
 
-struct SqlParam {
-    const char* name;
-    SqlParamType type; // + 4B padding
+struct SqlData {
+    SqlDataType type; // + 4B padding
     union {
         const void *as_blob_ptr;
         const char *as_c_str;
@@ -142,35 +154,46 @@ struct SqlParam {
     int32_t length; // probably dword sized
 };
 template<>
-struct std::formatter<SqlParam> : std::formatter<std::string> {
-    auto format(SqlParam param, std::format_context& ctx) const {
+struct std::formatter<SqlData> : std::formatter<std::string> {
+    auto format(const SqlData &data, std::format_context& ctx) const {
         std::string s;
-        // s += std::format("({}, {}, ", std::string(param.name, param.name + strlen(param.name)), param.type);
-        s += std::format("({}, ", std::string(param.name, param.name + strlen(param.name)));
-        switch(param.type) {
+        switch(data.type) {
             case Blob:
-                s += std::format("<blob data@{:p}, len={}>", param.value.as_blob_ptr, param.length);
+                s += std::format("<blob data@{:p}, len={}>", data.value.as_blob_ptr, data.length);
                 break;
             case Text:
-                s += std::format("\"{}\"", std::string(param.value.as_c_str, param.value.as_c_str + strlen(param.value.as_c_str)));
+                s += std::format("\"{}\"", std::string(data.value.as_c_str, data.value.as_c_str + strlen(data.value.as_c_str)));
                 break;
             // case WText:
-            //     s += std::format("L\"{}\"", param.value.as_wc_str);
+            //     s += std::format("L\"{}\"", data.value.as_wc_str);
             //     break;
             // case Integer32:
-            //     s += std::format("{}", param.value.as_int);
+            //     s += std::format("{}", data.value.as_int);
             //     break;
             case Integer:
-                s += std::format("{}", param.value.as_int64);
+                s += std::format("{}", data.value.as_int64);
                 break;
             case Real:
-                s += std::format("{:#}", param.value.as_double);
+                s += std::format("{:#}", data.value.as_double);
                 break;
             default:
-                s += std::format("<unknown 0x{:x}, 0x{:x}>", param.value.as_int64, param.length);
+                s += std::format("<unknown 0x{:x}, 0x{:x}>", data.value.as_int64, data.length);
                 break;
         }
-        s += std::format(")");
+        return std::formatter<std::string>::format(s, ctx);
+    }
+};
+
+struct SqlParam {
+    const char* name;
+    SqlData data;
+};
+template<>
+struct std::formatter<SqlParam> : std::formatter<std::string> {
+    auto format(const SqlParam &param, std::format_context& ctx) const {
+        std::string s;
+        // s += std::format("({}, {}, {})", std::string(param.name, param.name + strlen(param.name)), param.type, param.data);
+        s += std::format("({}, {})", std::string(param.name, param.name + strlen(param.name)), param.data);
         return std::formatter<std::string>::format(s, ctx);
     }
 };

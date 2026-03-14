@@ -34,6 +34,8 @@ const uintptr_t ADDRESS_glaiel__SQLSaveFile__SQL = 0x140a01980;
 // TLOG_SCHEMA_VERSION_HINT is written onto the meta channel to allow for parser versioning
 const uint64_t TLOG_SCHEMA_VERSION_HINT = 1;
 
+std::filesystem::path TLOG_FILE_LOCATION = LR"(C:\Games\test.tlog.lz4)";
+
 void write_db_to_log(std::string file_path) {
     G.tlogger->select_vsid(TlogVsid::SaveData);
     G.tlogger->set_timestamp_now();
@@ -73,24 +75,24 @@ void write_sql_to_log(std::string query, PodBufferPreallocated<SqlParam, 4> *par
     G.tlogger->write_string(query);
     for(const auto &param : *params) {
         G.tlogger->write_string(param.name);
-        switch(param.type) {
+        switch(param.data.type) {
             case Blob:
-                G.tlogger->write_blob(param.value.as_blob_ptr, param.length);
+                G.tlogger->write_blob(param.data.value.as_blob_ptr, param.data.length);
                 break;
             case Text:
-                G.tlogger->write_string(param.value.as_c_str);
+                G.tlogger->write_string(param.data.value.as_c_str);
                 break;
             // case WText:
-            //     s += std::format("L\"{}\"", param.value.as_wc_str);
+            //     s += std::format("L\"{}\"", param.data.value.as_wc_str);
             //     break;
             // case Integer32:
-            //     s += std::format("{}", param.value.as_int);
+            //     G.tlogger->write_int64(param.data.value.as_int);
             //     break;
             case Integer:
-                G.tlogger->write_int64(param.value.as_int64);
+                G.tlogger->write_int64(param.data.value.as_int64);
                 break;
             case Real:
-                G.tlogger->write_double(param.value.as_double);
+                G.tlogger->write_double(param.data.value.as_double);
                 break;
             default:
                 G.tlogger->write_na();
@@ -103,9 +105,9 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__BeginSave,
     void, __cdecl, glaiel__SQLSaveFile__BeginSave,
     SQLSaveFile* thiss
 ) {
-    glaiel__SQLSaveFile__BeginSave_hook.orig(thiss);
-
     DPRINTFMTPRE("glaiel::SQLSaveFile::BeginSave (this@{:p})\n", static_cast<void *>(thiss));
+
+    glaiel__SQLSaveFile__BeginSave_hook.orig(thiss);
 
     if(G.save_scope_counter == 0) {
         DPRINTFMT("    prediction: BEGIN TRANSACTION was issued - {}\n", thiss->file_path);
@@ -119,9 +121,9 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__EndSave,
     void, __cdecl, glaiel__SQLSaveFile__EndSave,
     SQLSaveFile* thiss
 ) {
-    glaiel__SQLSaveFile__EndSave_hook.orig(thiss);
-
     DPRINTFMTPRE("glaiel::SQLSaveFile::EndSave (this@{:p})\n", static_cast<void *>(thiss));
+
+    glaiel__SQLSaveFile__EndSave_hook.orig(thiss);
 
     if(G.save_scope_counter == 1) {
         DPRINTFMT("    prediction: COMMIT was issued - {}\n", thiss->file_path);
@@ -136,26 +138,25 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__EndSave,
 
 MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
     void, __cdecl, glaiel__SQLSaveFile__SQL,
-    SQLSaveFile *thiss, HostStdString *query, PodBufferPreallocated<SqlParam, 4> *params, HostStdFunction<void (sqlite3_stmt *stmt)> *callback
+    SQLSaveFile *thiss, HostStdString *ref_query, PodBufferPreallocated<SqlParam, 4> *params, HostStdFunction<void (sqlite3_stmt *stmt)> *ref_callback
 ) {
-    // can hook the callback thusly but would need to locate sqlite3 symbols in the
+    DPRINTFMTPRE("glaiel::SQLSaveFile::SQL (this@{:p})\n", static_cast<void *>(thiss));
+
+    // our only opportunity to sample query is before it is passed to the original function
+    std::string query_clone = ref_query->copy_to_native_string();
+
+    // can hook the callback like this but would need to locate sqlite3 symbols in the
     // host executable or link our own to be useful
     // std::function<void (sqlite3_stmt *)> callback_intercept = [callback](sqlite3_stmt *stmt) {
     //     DPRINTFMTPRE("hi mom!\n");
     //     (*callback)(stmt);
     // };
-    // glaiel__SQLSaveFile__SQL_hook.orig(thiss, query, params, &callback_intercept);
 
-    // note that because we accept query as a bare pointer, we need to sample query before calling the original function
-    std::string query_clone = query->copy_to_native_string();
+    // query and callback will be destroyed inside the original function
+    glaiel__SQLSaveFile__SQL_hook.orig(thiss, ref_query, params, ref_callback);
 
-    // query will be destroyed inside the original function
-    glaiel__SQLSaveFile__SQL_hook.orig(thiss, query, params, callback);
-
-    DPRINTFMTPRE("glaiel::SQLSaveFile::SQL (this@{:p})\n", static_cast<void *>(thiss));
     // log the save file if it is the first time we witnessed it referenced
-    // TODO does not account for in-game savefile deletes (would need to snoop deletions)
-    // or perhaps out-of-game manipulations (would need filesystem monitor)
+    // TODO does not account for in-game savefile deletes
     if(G.witnessed_db_paths.insert(thiss->file_path).second) {
         write_db_to_log(thiss->file_path);
     }
@@ -166,94 +167,6 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
     DPRINTFMT("\n");
     // NB very noisy at times; sometimes the game queries properties multiple times per second
     write_sql_to_log(query_clone, params, thiss->file_path);
-}
-
-bool install_hooks() {
-    HMODULE hModuleBaseExecutable = GetModuleHandle(NULL);
-    if(hModuleBaseExecutable == NULL) {
-        return false;
-    }
-
-    // Actual virtual address where mapped executable begins
-    uintptr_t p_actual_base = reinterpret_cast<uintptr_t>(hModuleBaseExecutable);
-    // Offset from PE ImageBase (0x140000000 + x) to actual mapped base (p_actual_base + x)
-    uintptr_t p_offset_image_to_actual = p_actual_base - 0x140000000;
-
-    DPRINTFMTPRE("Executable base VA is at: 0x{:x}\n", p_actual_base);
-
-    #ifdef USE_DETOURS_HOOK_IMPL
-    if(DetourTransactionBegin() != NO_ERROR) {
-        return false;
-    }
-
-    if(DetourUpdateThread(GetCurrentThread()) != NO_ERROR) {
-        return false;
-    }
-    #else
-    if(MH_Initialize() != MH_OK) {
-        return false;
-    }
-    #endif
-
-    if(!glaiel__SQLSaveFile__BeginSave_hook.install(p_offset_image_to_actual)) {
-        return false;
-    }
-
-    if(!glaiel__SQLSaveFile__EndSave_hook.install(p_offset_image_to_actual)) {
-        return false;
-    }
-
-    if(!glaiel__SQLSaveFile__SQL_hook.install(p_offset_image_to_actual)) {
-        return false;
-    }
-
-    #ifdef USE_DETOURS_HOOK_IMPL
-    if(DetourTransactionCommit() != NO_ERROR) {
-        return false;
-    }
-    #else
-    if(MH_EnableHook(MH_ALL_HOOKS) != MH_OK) {
-        return false;
-    }
-    #endif
-
-    return true;
-}
-
-bool uninstall_hooks() {
-    #ifdef USE_DETOURS_HOOK_IMPL
-    if(DetourTransactionBegin() != NO_ERROR) {
-        return false;
-    }
-
-    if(DetourUpdateThread(GetCurrentThread()) != NO_ERROR) {
-        return false;
-    }
-
-    if(!glaiel__SQLSaveFile__BeginSave_hook.uninstall()) {
-        return false;
-    }
-
-    if(!glaiel__SQLSaveFile__EndSave_hook.uninstall()) {
-        return false;
-    }
-
-    if(!glaiel__SQLSaveFile__SQL_hook.uninstall()) {
-        return false;
-    }
-
-    if(DetourTransactionCommit() != NO_ERROR) {
-        return false;
-    }
-    #else
-    // MinHook disables and removes hooks as part of uninit
-    // It keeps an internal list so there is no need to iterate ourselves
-    if(MH_Uninitialize() != MH_OK) {
-        return false;
-    }
-    #endif
-
-    return true;
 }
 
 BOOL WINAPI DllMain(
@@ -270,6 +183,9 @@ BOOL WINAPI DllMain(
 
     bool terminate_process = false;
 
+    // Actual virtual address where mapped executable begins
+    uintptr_t host_exec_base_va = reinterpret_cast<uintptr_t>(GetModuleHandle(NULL));
+
     // Perform actions based on the reason for calling.
     switch(fdwReason) {
         case DLL_PROCESS_ATTACH:
@@ -283,17 +199,19 @@ BOOL WINAPI DllMain(
             #endif
 
             DPRINTFMTPRE("DllMain DLL_PROCESS_ATTACH\n");
+            DPRINTFMTPRE("Executable base VA: 0x{:x}\n", host_exec_base_va);
             DPRINTFMTPRE("Working directory: {}\n", std::filesystem::current_path().string());
 
             // Instantiate the transaction logger
-            G.tlogger = new TransactionLogger("C:\\Games\\test.tlog.lz4", true);
+            G.tlogger = new TransactionLogger(TLOG_FILE_LOCATION, true);
             // and write a schema hint to the meta channel
             G.tlogger->select_vsid(TlogVsid::Meta);
             G.tlogger->set_timestamp_now();
             G.tlogger->write_int64(TLOG_SCHEMA_VERSION_HINT);
 
             // Try to install function hooks
-            if(!install_hooks()) {
+            // Offset from PE ImageBase (0x140000000 + x) to actual mapped base (host_exec_base_va + x)
+            if(!FunctionHookRegistry::install_hooks(host_exec_base_va - 0x140000000)) {
                 // we f'd around and found out...
 
                 // if hook installation failed, call TerminateProcess
@@ -318,7 +236,7 @@ BOOL WINAPI DllMain(
             if(lpReserved == NULL) {
                 // try to gracefully remove our hooks if this dll
                 // was unloaded outside a process exit
-                if(!uninstall_hooks()) {
+                if(!FunctionHookRegistry::uninstall_hooks()) {
                     // if hook uninstallation failed, call TerminateProcess
                     terminate_process = true;
                 }
