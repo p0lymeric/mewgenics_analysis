@@ -136,31 +136,29 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__EndSave,
     }
 }
 
-void glaiel__SQLSaveFile__SQL_CallableLayout1_cb(
-    MsvcFuncNoAlloc<CallableWrapped<glaiel__SQLSaveFile__SQL_CallableLayout1, void (sqlite3_stmt *)>, void (sqlite3_stmt *)> *thiss,
-    sqlite3_stmt **_Args
-) {
-    thiss->_Mystorage._Callee.wrapped->vtable->_Do_call(thiss->_Mystorage._Callee.wrapped, _Args);
-    auto wrapped = thiss->_Mystorage._Callee.wrapped;
-    // FIXME we need to discriminate the actual capture layout based on wrapped->vtable
-    // or some other determinant, since multiple variants do exist (e.g. value reads,
-    // PRAGMA reads, MAX(key) reads), or work with sqlite directly
-    // For now we assume the 7-qword capture buffer is always readable,
-    // and parse the most common case of a value read
-    DPRINTFMT("    resp datatype {}\n", *wrapped->_Mystorage._Callee.sqlite3_datatype);
-    DPRINTFMT("    resp pdata {:p}\n", (void*)wrapped->_Mystorage._Callee.result);
-    // FIXME reals don't parse correctly, strange
-    DPRINTFMT("    resp data {}\n", wrapped->_Mystorage._Callee.result->untrusted_format());
-}
-
 MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
     void, __cdecl, glaiel__SQLSaveFile__SQL,
-    SQLSaveFile *thiss, HostStdString *ref_query, PodBufferPreallocated<SqlParam, 4> *params, HostStdFunctionNoAlloc<glaiel__SQLSaveFile__SQL_CallableLayout1, void (sqlite3_stmt *stmt)> *ref_callback
+    SQLSaveFile *thiss, HostStdString *ref_query, PodBufferPreallocated<SqlParam, 4> *params, HostStdFunctionNoAlloc<glaiel__SQLSaveFile__SQL_CallableLayout1, void (sqlite3_stmt *p_stmt)> *ref_callback
 ) {
     DPRINTFMTPRE("glaiel::SQLSaveFile::SQL (this@{:p})\n", static_cast<void *>(thiss));
 
-    using CallbackWrapper = MsvcFuncNoAllocWrapper<glaiel__SQLSaveFile__SQL_CallableLayout1, void (sqlite3_stmt *stmt)>;
-    CallbackWrapper callback_wrapper(ref_callback, &glaiel__SQLSaveFile__SQL_CallableLayout1_cb);
+    int n_rows = 0;
+    using CallbackWrapper = MsvcFuncNoAllocWrapper<glaiel__SQLSaveFile__SQL_CallableLayout1, void (sqlite3_stmt *p_stmt)>;
+    std::function lambda = [&n_rows](CallbackWrapper::Wrapper *thiss, sqlite3_stmt **pp_stmt) -> void {
+        CallbackWrapper::Wrapped *wrapped = thiss->_Mystorage._Callee.wrapped;
+        wrapped->vtable->_Do_call(wrapped, pp_stmt);
+        // FIXME we need to discriminate the actual capture layout based on wrapped->vtable
+        // or some other determinant, since multiple variants do exist (e.g. value reads,
+        // PRAGMA reads, MAX(key) reads), or work with sqlite directly
+        // For now we assume the 7-qword capture buffer is always readable,
+        // and parse the most common case of a value read
+        DPRINTFMT("    resp datatype {}\n", *wrapped->_Mystorage._Callee.sqlite3_datatype);
+        DPRINTFMT("    resp pdata {:p}\n", (void*)wrapped->_Mystorage._Callee.result);
+        // FIXME reals don't parse correctly, strange
+        DPRINTFMT("    resp data {}\n", wrapped->_Mystorage._Callee.result->untrusted_format());
+        n_rows++;
+    };
+    CallbackWrapper callback_wrapper(ref_callback, &lambda);
 
     // our only opportunity to sample query is before it is passed to the original function
     std::string query_clone = ref_query->copy_to_native_string();
@@ -175,8 +173,10 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
     DPRINTFMT("\n");
 
     // query will be destroyed inside the original function
-    // callback will be destroyed by proxy by the original function invoking _Delete_this on callback_wrapper
+    // callback will be destroyed by proxy through the wrapper in the original function
     glaiel__SQLSaveFile__SQL_hook.orig(thiss, ref_query, params, callback_wrapper.as_target_type());
+
+    DPRINTFMT("    resp n rows: {}\n", n_rows);
 
     // log the save file if it is the first time we witnessed it referenced
     // TODO does not account for in-game savefile deletes

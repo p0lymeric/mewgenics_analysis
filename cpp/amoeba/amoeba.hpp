@@ -145,30 +145,26 @@ struct MsvcFuncNoAlloc_vtable<_Callable, _Rx(_Types...)> {
 };
 
 // Wrapper implementation
-// This wrapper implements a MsvcFuncNoAlloc that mirrors the call interface and
-// contains a pointer to another MsvcFuncNoAlloc as a capture member.
-// A function pointer is also stored in the capture environment whose code is executed in place
-// of the wrapped MsvcFuncNoAlloc's lambda.
-
-// i.e. a std::function "callback_wrapped" capturing externally provided std::function "callback" and function pointer "func"
-// _Rx func(std::function<_Rx(_Types...)> capture, _Types...) { /**/ }
-// std::function<_Rx(_Types...)> callback = /* externally provided */;
-// std::function<_Rx(_Types...)> callback_wrapped = [&func, callback](_Args...) { (*func)(callback, _Args...); };
-// /* callback_wrapped is used in place of callback */
+// This wrapper implements a MsvcFuncNoAlloc that mirrors the calling interface of another MsvcFuncNoAlloc.
+// It stores a pointer to this "wrapped" MsvcFuncNoAlloc in its capture environment.
+// The user provides a native std::function to "intercept" calls that target the "wrapped" MsvcFuncNoAlloc.
+// When the wrapper is invoked, it calls the native std::function.
+// The native std::function is given the "wrapped" MsvcFuncNoAlloc and is free to execute any code.
+// The wrapper will forward destruction to the "wrapped" MsvcFuncNoAlloc.
 
 // The _Callable layout for the wrapper
-// Looks like capture of a function pointer and a pointer to another std::function
+// Captures a native std::function and a pointer to a MsvcFuncNoAlloc
 template <class _Callable, class _Rx, class... _Types>
 struct CallableWrapped;
 template <class _Callable, class _Rx, class... _Types>
 struct CallableWrapped<_Callable, _Rx(_Types...)> {
     using Wrapped = MsvcFuncNoAlloc<_Callable, _Rx(_Types...)>;
     using Wrapper = MsvcFuncNoAlloc<CallableWrapped, _Rx(_Types...)>;
-    _Rx (* fp)(Wrapper* thiss, _Types*... _Args);
+    std::function<_Rx(Wrapper* thiss, _Types*... _Args)> *interceptor;
     Wrapped *wrapped;
 };
 
-// CallableWrapped is small and constant sized (1 qword for fp + 1 qword for wrapped)
+// CallableWrapped is small and constant sized (1 qword for interceptor + 1 qword for wrapped)
 template <class _Callable, class _Rx, class... _Types>
 struct MsvcFuncNoAllocWrapper;
 template <class _Callable, class _Rx, class... _Types>
@@ -203,8 +199,8 @@ struct MsvcFuncNoAllocWrapper<_Callable, _Rx(_Types...)> :
         return nullptr;
     }
     static _Rx _Do_call(Wrapper* thiss, _Types*... _Args) {
-        // redirect control to a user-provided function pointer stored in the capture body
-        return thiss->_Mystorage._Callee.fp(thiss , _Args...);
+        // redirect control to a user-provided interceptor stored in the capture body
+        return (*thiss->_Mystorage._Callee.interceptor)(thiss , _Args...);
     }
     static const MsvcTypeInfo* _Target_type(Wrapper const* thiss) {
         // redirect this call to wrapped instance
@@ -238,13 +234,15 @@ struct MsvcFuncNoAllocWrapper<_Callable, _Rx(_Types...)> :
         _Copy, _Move, _Do_call, _Target_type, _Delete_this, _Get
     };
 
-    MsvcFuncNoAllocWrapper(Wrapped *wrapped, _Rx (*fp)(Wrapper* thiss, _Types*... args)) :
-        Wrapper(&my_vtable, WrapperCallable { fp, wrapped })
+    MsvcFuncNoAllocWrapper(Wrapped *wrapped, std::function<_Rx(Wrapper* thiss, _Types*... _Args)> *interceptor) :
+        Wrapper(&my_vtable, WrapperCallable { interceptor, wrapped })
     {
         // point to start of this object to mark it as small-storage
         this->_Mystorage._Ptrs[6] = reinterpret_cast<void *>(this);
     }
 
+    // TODO MsvcFuncNoAllocWrapper<...> should be a trivial alias of MsvcFuncNoAlloc<CallableWrapped<...>, ...>,
+    // should somehow eliminate this reinterpret_cast
     Wrapped *as_target_type() {
         return reinterpret_cast<Wrapped *>(this);
     }
