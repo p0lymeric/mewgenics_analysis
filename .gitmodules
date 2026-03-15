@@ -7,3 +7,9 @@
 [submodule "cpp/lib/detours"]
 	path = cpp/lib/detours
 	url = https://github.com/microsoft/detours
+[submodule "cpp/lib/imgui"]
+	path = cpp/lib/imgui
+	url = https://github.com/ocornut/imgui
+[submodule "cpp/lib/SDL"]
+	path = cpp/lib/SDL
+	url = https://github.com/libsdl-org/SDL
