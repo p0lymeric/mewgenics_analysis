@@ -13,6 +13,11 @@
 
 #include "detours.h"
 
+// #include "SDL3/SDL.h"
+// #include "imgui.h"
+// #include "imgui_impl_sdl3.h"
+// #include "imgui_impl_opengl3.h"
+
 // Poor cat's SQL transaction logging
 //
 // Takes a copy of the save file every time Mewgenics
@@ -25,11 +30,11 @@
 GlobalContext G;
 
 // These addresses were extracted from Mewgenics.exe
-// They are expressed relative to a canonical ImageBase of 0x140000000
+// They are encoded as relative VAs
 // Mewgenics 1.0.20763 (SHA-256 e6cf210e4d1857b7c36ec33f4092290b7b57fe76cab60bf24345ab20fbf78f8c)
-const uintptr_t ADDRESS_glaiel__SQLSaveFile__BeginSave = 0x140a02550;
-const uintptr_t ADDRESS_glaiel__SQLSaveFile__EndSave = 0x140a025f0;
-const uintptr_t ADDRESS_glaiel__SQLSaveFile__SQL = 0x140a01980;
+const uintptr_t ADDRESS_glaiel__SQLSaveFile__BeginSave = 0xa02550;
+const uintptr_t ADDRESS_glaiel__SQLSaveFile__EndSave = 0xa025f0;
+const uintptr_t ADDRESS_glaiel__SQLSaveFile__SQL = 0xa01980;
 
 // TLOG_SCHEMA_VERSION_HINT is written onto the meta channel to allow for parser versioning
 const uint64_t TLOG_SCHEMA_VERSION_HINT = 1;
@@ -187,6 +192,47 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
     write_sql_to_log(query_clone, params, thiss->file_path);
 }
 
+// TODO don't actually need GetProcAddress for this, linker knows about this symbol
+// need a MAKE_HOOK variant that accepts a true VA
+// MAKE_PHOOK("SDL_GL_SwapWindow",
+//     bool, __cdecl, SDL_GL_SwapWindow,
+//     SDL_Window *window
+// ) {
+//     if(!G.imgui_initialized) {
+//         IMGUI_CHECKVERSION();
+//         ImGui::CreateContext();
+//         ImGuiIO& io = ImGui::GetIO();
+//         io.IniFilename = nullptr;
+//         io.LogFilename = nullptr;
+
+//         // void *current_gl_context = reinterpret_cast<void *>(GetProcAddress(GetModuleHandle(NULL), "SDL_GL_GetCurrentContext"));
+//         ImGui_ImplSDL3_InitForOpenGL(window, SDL_GL_GetCurrentContext());
+//         ImGui_ImplOpenGL3_Init();
+//         G.imgui_initialized = true;
+//     }
+
+//     ImGui_ImplOpenGL3_NewFrame();
+//     ImGui_ImplSDL3_NewFrame();
+//     ImGui::NewFrame();
+//     ImGui::ShowDemoWindow();
+
+//     ImGui::Render();
+//     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+//     return SDL_GL_SwapWindow_hook.orig(window);
+// }
+
+// MAKE_PHOOK("SDL_PollEvent",
+//     bool, __cdecl, SDL_PollEvent,
+//     SDL_Event *event
+// ) {
+//     bool result = SDL_PollEvent_hook.orig(event);
+//     if(result && G.imgui_initialized) {
+//         ImGui_ImplSDL3_ProcessEvent(event);
+//     }
+//     // TODO prevent click-through or type-through
+//     return result;
+// }
+
 BOOL WINAPI DllMain(
     HINSTANCE hinstDLL,  // handle to DLL module
     DWORD fdwReason,     // reason for calling function
@@ -228,8 +274,7 @@ BOOL WINAPI DllMain(
             G.tlogger->write_int64(TLOG_SCHEMA_VERSION_HINT);
 
             // Try to install function hooks
-            // Offset from PE ImageBase (0x140000000 + x) to actual mapped base (host_exec_base_va + x)
-            if(!FunctionHookRegistry::install_hooks(host_exec_base_va - 0x140000000)) {
+            if(!FunctionHookRegistry::install_hooks(host_exec_base_va)) {
                 // we f'd around and found out...
 
                 // if hook installation failed, call TerminateProcess
@@ -258,6 +303,11 @@ BOOL WINAPI DllMain(
                     // if hook uninstallation failed, call TerminateProcess
                     terminate_process = true;
                 }
+                // if(G.imgui_initialized) {
+                //     ImGui_ImplOpenGL3_Shutdown();
+                //     ImGui_ImplSDL3_Shutdown();
+                //     ImGui::DestroyContext();
+                // }
             } else {
                 // process is exiting, no need to unhook
             }

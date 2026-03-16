@@ -26,6 +26,7 @@ struct GlobalContext {
     // std::string current_opened_db_path;
     std::set<std::string> witnessed_db_paths;
     TransactionLogger *tlogger;
+    bool imgui_initialized;
 };
 
 

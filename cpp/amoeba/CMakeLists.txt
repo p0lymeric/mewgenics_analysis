@@ -45,7 +45,8 @@ elseif(MINGW)
 endif()
 
 target_link_libraries(${INJECTOR_NAME} PRIVATE Detours)
-target_link_libraries(${HOOK_NAME} PRIVATE Detours lz4)
+# Instead of building SDL3, we use exported symbols from the exe (Mewgenics_exports) instead
+target_link_libraries(${HOOK_NAME} PRIVATE Detours lz4 dear_imgui SDL3::Headers Mewgenics_exports)
 
 install(TARGETS ${TARGET_NAME} ${INJECTOR_NAME} RUNTIME DESTINATION bin)
 install(TARGETS ${TARGET_NAME} ${HOOK_NAME} RUNTIME DESTINATION bin)

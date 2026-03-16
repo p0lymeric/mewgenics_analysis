@@ -17,13 +17,23 @@
 // Makes a hook that will be managed by FunctionHookRegistry
 #define MAKE_HOOK(address, ret_type, call_conv, name, ...) \
     ret_type call_conv name##_detour(__VA_ARGS__); \
-    FunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), true> name##_hook(address, &name##_detour); \
+    AddrFunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), true> name##_hook(address, &name##_detour); \
+    ret_type call_conv name##_detour(__VA_ARGS__)
+
+#define MAKE_PHOOK(lp_proc_name, ret_type, call_conv, name, ...) \
+    ret_type call_conv name##_detour(__VA_ARGS__); \
+    ProcFunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), true> name##_hook(lp_proc_name, &name##_detour); \
     ret_type call_conv name##_detour(__VA_ARGS__)
 
 // Makes a hook that will be managed independently from FunctionHookRegistry
 #define MAKE_HOOK_UNREGISTERED(address, ret_type, call_conv, name, ...) \
     ret_type call_conv name##_detour(__VA_ARGS__); \
-    FunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), false> name##_hook(address, &name##_detour); \
+    AddrFunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), false> name##_hook(address, &name##_detour); \
+    ret_type call_conv name##_detour(__VA_ARGS__)
+
+#define MAKE_PHOOK_UNREGISTERED(lp_proc_name, ret_type, call_conv, name, ...) \
+    ret_type call_conv name##_detour(__VA_ARGS__); \
+    ProcFunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), false> name##_hook(lp_proc_name, &name##_detour); \
     ret_type call_conv name##_detour(__VA_ARGS__)
 
 class IFunctionHookDescriptor {
@@ -41,7 +51,7 @@ public:
         return registry;
     }
 
-    static bool install_hooks(uintptr_t p_offset_image_to_actual) {
+    static bool install_hooks(uintptr_t host_exec_base_va) {
         #ifdef USE_DETOURS_HOOK_IMPL
         if(DetourTransactionBegin() != NO_ERROR) {
             return false;
@@ -57,7 +67,7 @@ public:
         #endif
 
         for(auto hook: FunctionHookRegistry::get_registry()) {
-            if (!hook->install(p_offset_image_to_actual)) {
+            if (!hook->install(host_exec_base_va)) {
                 return false;
             }
         }
@@ -107,10 +117,8 @@ public:
 };
 
 template<typename FP, bool RegisterMe>
-class FunctionHookDescriptor : IFunctionHookDescriptor {
+class BFunctionHookDescriptor : IFunctionHookDescriptor {
 public:
-    // ImageBase-relative address of the targeted function. This is the function's canonical address seen in static disassembly.
-    const uintptr_t target_canonical;
     // VA of the targeted function. This is the function's relocated address seen in this program instance.
     FP target;
     // VA of the detour function. This FP references the function we declared with MAKE_HOOK.
@@ -118,17 +126,23 @@ public:
     // VA of the trampoline function. The detour function calls this FP to execute the targeted function's original implementation.
     FP orig;
 
-    FunctionHookDescriptor(uintptr_t target_canonical, FP detour) :
-        target_canonical(target_canonical), target(nullptr), detour(detour), orig(nullptr)
+    BFunctionHookDescriptor(FP detour) :
+        target(nullptr), detour(detour), orig(nullptr)
     {
         if constexpr(RegisterMe) {
             FunctionHookRegistry::get_registry().push_back(this);
         }
     }
 
+    virtual FP calculate_target(uintptr_t offset) = 0;
+
     bool install(uintptr_t offset) override {
         if(this->target == nullptr) {
-            this->target = reinterpret_cast<FP>(this->target_canonical + offset);
+            this->target = this->calculate_target(offset);
+            if(this->target == nullptr) {
+                // e.g. if GetProcAddress were to fail
+                return false;
+            }
             #ifdef USE_DETOURS_HOOK_IMPL
             this->orig = this->target;
             if (DetourAttach(reinterpret_cast<PVOID *>(&this->orig), reinterpret_cast<PVOID>(this->detour)) != NO_ERROR) {
@@ -162,5 +176,37 @@ public:
         } else {
             return false;
         }
+    }
+};
+
+template<typename FP, bool RegisterMe>
+class AddrFunctionHookDescriptor : public BFunctionHookDescriptor<FP, RegisterMe> {
+public:
+    // Relative VA of the targeted function. This is the function's VA not including any mapping offsets.
+    const uintptr_t target_canonical;
+
+    AddrFunctionHookDescriptor(uintptr_t target_canonical, FP detour) :
+        BFunctionHookDescriptor<FP, RegisterMe>(detour), target_canonical(target_canonical)
+    {}
+
+    FP calculate_target(uintptr_t offset) override {
+        return reinterpret_cast<FP>(this->target_canonical + offset);
+    }
+};
+
+template<typename FP, bool RegisterMe>
+class ProcFunctionHookDescriptor : public BFunctionHookDescriptor<FP, RegisterMe> {
+public:
+    // Export name or ordinal of the targeted function. This is the function's canonical identifier in its exporter's export table.
+    const LPCSTR lp_proc_name;
+
+    ProcFunctionHookDescriptor(LPCSTR lp_proc_name, FP detour) :
+        BFunctionHookDescriptor<FP, RegisterMe>(detour), lp_proc_name(lp_proc_name)
+    {}
+
+    FP calculate_target(uintptr_t offset) override {
+        // offset is an HMODULE retrieved with GetModuleHandle(NULL) outside this function
+        // can potentially perform cross-dll hooking by storing a wide string module name too
+        return reinterpret_cast<FP>(reinterpret_cast<void *>(GetProcAddress(reinterpret_cast<HMODULE>(offset), this->lp_proc_name)));
     }
 };
