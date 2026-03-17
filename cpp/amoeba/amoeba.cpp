@@ -1,22 +1,16 @@
-// Opens a console on the host process via AllocConsole and uses the host's stdout for writing debug prints
-#define ENABLE_DEBUG_CONSOLE
-// Use Detours function hook implementation instead of MinHook
-#define USE_DETOURS_HOOK_IMPL
-
 #include "amoeba.hpp"
 #include "debug_console.hpp"
 #include "function_hook.hpp"
 
 #include <chrono>
 #include <filesystem>
-#include <windows.h>
 
 #include "detours.h"
 
-// #include "SDL3/SDL.h"
-// #include "imgui.h"
-// #include "imgui_impl_sdl3.h"
-// #include "imgui_impl_opengl3.h"
+#include "SDL3/SDL.h"
+#include "imgui.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_opengl3.h"
 
 // Poor cat's SQL transaction logging
 //
@@ -110,12 +104,12 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__BeginSave,
     void, __cdecl, glaiel__SQLSaveFile__BeginSave,
     SQLSaveFile* thiss
 ) {
-    DPRINTFMTPRE("glaiel::SQLSaveFile::BeginSave (this@{:p})\n", static_cast<void *>(thiss));
+    D::debug("glaiel::SQLSaveFile::BeginSave (this@{:p})\n", static_cast<void *>(thiss));
 
     glaiel__SQLSaveFile__BeginSave_hook.orig(thiss);
 
     if(G.save_scope_counter == 0) {
-        DPRINTFMT("    prediction: BEGIN TRANSACTION was issued - {}\n", thiss->file_path);
+        D::chain("    prediction: BEGIN TRANSACTION was issued - {}\n", thiss->file_path);
         G.save_scope_counter++;
     } else {
         G.save_scope_counter++;
@@ -126,16 +120,16 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__EndSave,
     void, __cdecl, glaiel__SQLSaveFile__EndSave,
     SQLSaveFile* thiss
 ) {
-    DPRINTFMTPRE("glaiel::SQLSaveFile::EndSave (this@{:p})\n", static_cast<void *>(thiss));
+    D::debug("glaiel::SQLSaveFile::EndSave (this@{:p})\n", static_cast<void *>(thiss));
 
     glaiel__SQLSaveFile__EndSave_hook.orig(thiss);
 
     if(G.save_scope_counter == 1) {
-        DPRINTFMT("    prediction: COMMIT was issued - {}\n", thiss->file_path);
+        D::chain("    prediction: COMMIT was issued - {}\n", thiss->file_path);
         write_db_to_log(thiss->file_path);
         G.save_scope_counter--;
     } else if (G.save_scope_counter == 0) {
-        DPRINTFMT("    save scope counter underflowed--maybe this hook was injected while the game was saving\n", static_cast<void *>(thiss));
+        D::chain("    save scope counter underflowed--maybe this hook was injected while the game was saving\n", static_cast<void *>(thiss));
     } else {
         G.save_scope_counter--;
     }
@@ -145,7 +139,7 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
     void, __cdecl, glaiel__SQLSaveFile__SQL,
     SQLSaveFile *thiss, HostStdString *ref_query, PodBufferPreallocated<SqlParam, 4> *params, HostStdFunctionNoAlloc<glaiel__SQLSaveFile__SQL_CallableLayout1, void (sqlite3_stmt *p_stmt)> *ref_callback
 ) {
-    DPRINTFMTPRE("glaiel::SQLSaveFile::SQL (this@{:p})\n", static_cast<void *>(thiss));
+    D::debug("glaiel::SQLSaveFile::SQL (this@{:p})\n", static_cast<void *>(thiss));
 
     int n_rows = 0;
     using CallbackWrapper = MsvcFuncNoAllocWrapper<glaiel__SQLSaveFile__SQL_CallableLayout1, void (sqlite3_stmt *p_stmt)>;
@@ -157,10 +151,10 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
         // PRAGMA reads, MAX(key) reads), or work with sqlite directly
         // For now we assume the 7-qword capture buffer is always readable,
         // and parse the most common case of a value read
-        DPRINTFMT("    resp datatype {}\n", *wrapped->_Mystorage._Callee.sqlite3_datatype);
-        DPRINTFMT("    resp pdata {:p}\n", (void*)wrapped->_Mystorage._Callee.result);
+        D::chain("    resp datatype {}\n", *wrapped->_Mystorage._Callee.sqlite3_datatype);
+        D::chain("    resp pdata {:p}\n", (void*)wrapped->_Mystorage._Callee.result);
         // FIXME reals don't parse correctly, strange
-        DPRINTFMT("    resp data {}\n", wrapped->_Mystorage._Callee.result->untrusted_format());
+        D::chain("    resp data {}\n", wrapped->_Mystorage._Callee.result->untrusted_format());
         n_rows++;
     };
     CallbackWrapper callback_wrapper(ref_callback, &lambda);
@@ -168,20 +162,20 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
     // our only opportunity to sample query is before it is passed to the original function
     std::string query_clone = ref_query->copy_to_native_string();
 
-    // DPRINTFMT("    Callback info: {}\n", *ref_callback);
-    // DPRINTFMT("    Callback wrapper info: {}\n", *callback_wrapper.as_target_type());
+    // D::chain("    Callback info: {}\n", *ref_callback);
+    // D::chain("    Callback wrapper info: {}\n", *callback_wrapper.as_target_type());
 
-    DPRINTFMT("    {}", query_clone);
+    D::chain("    {}", query_clone);
     for(const auto &param : *params) {
-        DPRINTFMT(" {}", param);
+        D::chain(" {}", param);
     }
-    DPRINTFMT("\n");
+    D::chain("\n");
 
     // query will be destroyed inside the original function
     // callback will be destroyed by proxy through the wrapper in the original function
     glaiel__SQLSaveFile__SQL_hook.orig(thiss, ref_query, params, callback_wrapper.as_target_type());
 
-    DPRINTFMT("    resp n rows: {}\n", n_rows);
+    D::chain("    resp n rows: {}\n", n_rows);
 
     // log the save file if it is the first time we witnessed it referenced
     // TODO does not account for in-game savefile deletes
@@ -192,46 +186,149 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
     write_sql_to_log(query_clone, params, thiss->file_path);
 }
 
-// TODO don't actually need GetProcAddress for this, linker knows about this symbol
-// need a MAKE_HOOK variant that accepts a true VA
-// MAKE_PHOOK("SDL_GL_SwapWindow",
-//     bool, __cdecl, SDL_GL_SwapWindow,
-//     SDL_Window *window
-// ) {
-//     if(!G.imgui_initialized) {
-//         IMGUI_CHECKVERSION();
-//         ImGui::CreateContext();
-//         ImGuiIO& io = ImGui::GetIO();
-//         io.IniFilename = nullptr;
-//         io.LogFilename = nullptr;
+void show_log_window() {
+    if(ImGui::Begin("Log")) {
+        if(ImGui::BeginChild("Scroller")) {
+            ImGuiListClipper clipper;
+            int log_size = static_cast<int>(D::get().internal_buffer.size());
+            clipper.Begin(log_size);
+            while(clipper.Step()) {
+                for(int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
+                    auto message = D::get().internal_buffer[log_size - i - 1];
+                    ImGui::TextUnformatted(message.message.data(), message.message.data() + message.message.size());
+                }
+            }
+            clipper.End();
+        }
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
 
-//         // void *current_gl_context = reinterpret_cast<void *>(GetProcAddress(GetModuleHandle(NULL), "SDL_GL_GetCurrentContext"));
-//         ImGui_ImplSDL3_InitForOpenGL(window, SDL_GL_GetCurrentContext());
-//         ImGui_ImplOpenGL3_Init();
-//         G.imgui_initialized = true;
-//     }
+MAKE_VHOOK(bool, __cdecl, SDL_GL_SwapWindow,
+    SDL_Window *window
+) {
+    if(!G.ig.initialized) {
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
 
-//     ImGui_ImplOpenGL3_NewFrame();
-//     ImGui_ImplSDL3_NewFrame();
-//     ImGui::NewFrame();
-//     ImGui::ShowDemoWindow();
+        ImGuiIO& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.LogFilename = nullptr;
+        // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
-//     ImGui::Render();
-//     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-//     return SDL_GL_SwapWindow_hook.orig(window);
-// }
+        ImGui_ImplSDL3_InitForOpenGL(window, SDL_GL_GetCurrentContext());
+        ImGui_ImplOpenGL3_Init();
+        G.ig.initialized = true;
+    }
 
-// MAKE_PHOOK("SDL_PollEvent",
-//     bool, __cdecl, SDL_PollEvent,
-//     SDL_Event *event
-// ) {
-//     bool result = SDL_PollEvent_hook.orig(event);
-//     if(result && G.imgui_initialized) {
-//         ImGui_ImplSDL3_ProcessEvent(event);
-//     }
-//     // TODO prevent click-through or type-through
-//     return result;
-// }
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+
+    // ImGui::ShowDemoWindow();
+    show_log_window();
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+    // ImGuiIO& io = ImGui::GetIO();
+    // if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+    //     SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext();
+    //     ImGui::UpdatePlatformWindows();
+    //     ImGui::RenderPlatformWindowsDefault();
+    //     SDL_GL_MakeCurrent(window, backup_current_context);
+    // }
+
+    return SDL_GL_SwapWindow_hook.orig(window);
+}
+
+MAKE_VHOOK(bool, __cdecl, SDL_PollEvent,
+    SDL_Event *event
+) {
+    bool result = SDL_PollEvent_hook.orig(event);
+    if(result && G.ig.initialized) {
+        ImGui_ImplSDL3_ProcessEvent(event);
+    }
+    // TODO prevent click-through or type-through
+    return result;
+}
+
+bool on_attach() {
+    // Actual virtual address where mapped executable begins
+    uintptr_t host_exec_base_va = reinterpret_cast<uintptr_t>(GetModuleHandle(NULL));
+
+    // Instantiate the transaction logger
+    G.tlogger = new TransactionLogger(TLOG_FILE_LOCATION, true);
+    // and write a schema hint to the meta channel
+    G.tlogger->select_vsid(TlogVsid::Meta);
+    G.tlogger->set_timestamp_now();
+    G.tlogger->write_int64(TLOG_SCHEMA_VERSION_HINT);
+
+    // Create a Win32 console window with which to print log messages
+    ALLOC_CONSOLE();
+    // Link the transaction logger with the debug console backend
+    D::install_tlogger(G.tlogger, TlogVsid::Log);
+    // Enable the debug console internal message buffer
+    D::enable_internal_buffer(1000, 1000);
+
+    D::debug("DllMain DLL_PROCESS_ATTACH\n");
+    D::debug("Executable base VA: 0x{:x}\n", host_exec_base_va);
+    D::debug("Working directory: {}\n", std::filesystem::current_path().string());
+
+    // Try to install function hooks
+    if(!SFunctionHookRegistry::install_hooks(host_exec_base_va)) {
+        // we f'd around and found out...
+
+        // if hook installation failed, call TerminateProcess
+        // instead of conventional exit
+        return false;
+    }
+    return true;
+}
+
+bool on_unload_detach() {
+    D::debug("DllMain DLL_PROCESS_DETACH (unload)\n");
+    // try to gracefully remove our hooks if this dll
+    // was unloaded outside a process exit
+    if(!SFunctionHookRegistry::uninstall_hooks()) {
+        // if hook uninstallation failed, call TerminateProcess
+        return false;
+    }
+    if(G.ig.initialized) {
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui_ImplSDL3_Shutdown();
+        ImGui::DestroyContext();
+    }
+    return true;
+}
+
+bool on_exitprocess_detach() {
+    D::debug("DllMain DLL_PROCESS_DETACH (ExitProcess)\n");
+    return true;
+}
+
+void final_rites(bool is_detach, bool terminate_process) {
+    // If we are gracefully detaching, close the console window.
+    // Otherwise leave the console open, if only for the split second that a
+    // diagnostic print could flicker on screen
+    if(terminate_process) {
+        if(is_detach) {
+            D::debug("An unrecoverable error occurred during dll uninitialization.\n");
+        } else {
+            D::debug("An unrecoverable error occurred during dll initialization.\n");
+        }
+    } else {
+        FREE_CONSOLE();
+    }
+
+    // Always finalize tlogger before exit, even if we plan to terminate the process
+    D::uninstall_tlogger();
+    // write reset to indicate stream end
+    G.tlogger->reset();
+    // then flush and close the log
+    delete G.tlogger;
+}
 
 BOOL WINAPI DllMain(
     HINSTANCE hinstDLL,  // handle to DLL module
@@ -247,9 +344,6 @@ BOOL WINAPI DllMain(
 
     bool terminate_process = false;
 
-    // Actual virtual address where mapped executable begins
-    uintptr_t host_exec_base_va = reinterpret_cast<uintptr_t>(GetModuleHandle(NULL));
-
     // Perform actions based on the reason for calling.
     switch(fdwReason) {
         case DLL_PROCESS_ATTACH:
@@ -257,31 +351,8 @@ BOOL WINAPI DllMain(
             // Return FALSE to fail DLL load.
             DetourRestoreAfterWith();
 
-            #ifdef ENABLE_DEBUG_CONSOLE
-            // Create a console window with which to print log messages
-            AllocConsole();
-            #endif
-
-            DPRINTFMTPRE("DllMain DLL_PROCESS_ATTACH\n");
-            DPRINTFMTPRE("Executable base VA: 0x{:x}\n", host_exec_base_va);
-            DPRINTFMTPRE("Working directory: {}\n", std::filesystem::current_path().string());
-
-            // Instantiate the transaction logger
-            G.tlogger = new TransactionLogger(TLOG_FILE_LOCATION, true);
-            // and write a schema hint to the meta channel
-            G.tlogger->select_vsid(TlogVsid::Meta);
-            G.tlogger->set_timestamp_now();
-            G.tlogger->write_int64(TLOG_SCHEMA_VERSION_HINT);
-
-            // Try to install function hooks
-            if(!FunctionHookRegistry::install_hooks(host_exec_base_va)) {
-                // we f'd around and found out...
-
-                // if hook installation failed, call TerminateProcess
+            if(!on_attach()) {
                 terminate_process = true;
-
-                // instead of conventional exit
-                // return FALSE;
             }
             break;
 
@@ -295,41 +366,20 @@ BOOL WINAPI DllMain(
 
         case DLL_PROCESS_DETACH:
             // Perform any necessary cleanup.
-            DPRINTFMTPRE("DllMain DLL_PROCESS_DETACH\n");
             if(lpReserved == NULL) {
-                // try to gracefully remove our hooks if this dll
-                // was unloaded outside a process exit
-                if(!FunctionHookRegistry::uninstall_hooks()) {
-                    // if hook uninstallation failed, call TerminateProcess
+                if(!on_unload_detach()) {
                     terminate_process = true;
                 }
-                // if(G.imgui_initialized) {
-                //     ImGui_ImplOpenGL3_Shutdown();
-                //     ImGui_ImplSDL3_Shutdown();
-                //     ImGui::DestroyContext();
-                // }
             } else {
-                // process is exiting, no need to unhook
+                if(!on_exitprocess_detach()) {
+                    terminate_process = true;
+                }
             }
             break;
     }
 
-    // If we are gracefully detaching, close the console. Otherwise leave the console open,
-    // if only for the split second that a diagnostic print could flicker on screen
-    if(terminate_process) {
-        DPRINTFMTPRE("An unrecoverable error occurred during function hooking/unhooking.\n");
-    } else if(fdwReason == DLL_PROCESS_DETACH) {
-        #ifdef ENABLE_DEBUG_CONSOLE
-        FreeConsole();
-        #endif
-    }
-
-    // Always finalize tlogger before exit, even if we plan to terminate the process
     if(fdwReason == DLL_PROCESS_DETACH || terminate_process) {
-        // write reset to indicate stream end
-        G.tlogger->reset();
-        // then flush and close the log
-        delete G.tlogger;
+        final_rites(fdwReason == DLL_PROCESS_DETACH, terminate_process);
     }
 
     if(terminate_process) {

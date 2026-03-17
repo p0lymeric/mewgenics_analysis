@@ -1,11 +1,25 @@
 CompileFlags:
     Add:
-        - "-std=c++20"
-        # The presence of compile_flags.txt encourages clangd to interpret these as relative to
-        # workspace root and not the source directories
-        - "-Icpp/lib/lz4/lib"
-        - "-Icpp/lib/minhook/include"
-        - "-Icpp/lib/detours/src"
-        - "-Icpp/lib/imgui"
-        - "-Icpp/lib/imgui/backends"
-        - "-Icpp/lib/SDL/include"
+        - -Wall
+        - -Wextra
+        - -Wpedantic
+        # The presence of compile_flags.txt encourages clangd to interpret these paths relative to workspace root
+        - -Icpp/lib/lz4/lib
+        - -Icpp/lib/minhook/include
+        - -Icpp/lib/detours/src
+        - -Icpp/lib/imgui
+        - -Icpp/lib/imgui/backends
+        - -Icpp/lib/SDL/include
+
+Diagnostics:
+    Includes:
+        IgnoreHeader: [cpp/lib/.*]
+
+---
+
+If:
+    PathMatch: [.*\.hpp, .*\.cpp, cpp/lib/imgui/.*\.h]
+CompileFlags:
+    Add:
+        - -std=c++20
+        - --language=c++

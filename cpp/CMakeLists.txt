@@ -12,3 +12,4 @@ add_subdirectory(lib/Mewgenics EXCLUDE_FROM_ALL)
 
 # Read our CMakeLists
 add_subdirectory(amoeba)
+add_subdirectory(cosmic_ooze)

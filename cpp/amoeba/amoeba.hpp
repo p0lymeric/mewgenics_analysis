@@ -8,6 +8,8 @@
 #include <functional>
 #include <format>
 
+#include <windows.h>
+
 // Main program declarations.
 //
 // polymeric 2026
@@ -16,9 +18,14 @@
 
 enum TlogVsid : uint32_t {
     Meta = 0,
-    Info = 1,
+    Log = 1,
     Sql = 2,
     SaveData = 3,
+};
+
+struct ImguiState {
+    bool initialized;
+    bool visible;
 };
 
 struct GlobalContext {
@@ -26,9 +33,8 @@ struct GlobalContext {
     // std::string current_opened_db_path;
     std::set<std::string> witnessed_db_paths;
     TransactionLogger *tlogger;
-    bool imgui_initialized;
+    ImguiState ig;
 };
-
 
 // HOST STRUCTURE DECLARATIONS
 
@@ -349,7 +355,7 @@ struct std::formatter<SqlData> : std::formatter<std::string> {
         return std::formatter<std::string>::format(s, ctx);
     }
 };
-std::string SqlData::untrusted_format() {
+inline std::string SqlData::untrusted_format() {
     // for debug printing, to allow "maybe pointers" to SqlData to be scrutinized without punishment
     SqlData buf;
     if(ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(this), &buf, sizeof(buf), NULL)) {
