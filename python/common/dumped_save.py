@@ -289,9 +289,9 @@ class Cat:
 
     def birthday(self):
         offset = self.collar_offset_past + 12
-        return struct.unpack_from(f'<Q', self.blob, offset=offset)[0]
+        return struct.unpack_from(f'<q', self.blob, offset=offset)[0]
 
-    def unknown_16(self):
+    def deathday_house(self):
         offset = self.collar_offset_past + 20
         return struct.unpack_from(f'<q', self.blob, offset=offset)[0]
 
@@ -358,7 +358,7 @@ class Cat:
             'level': self.level(),
             'coi': self.coi(),
             'birthday': self.birthday(),
-            'unknown_16': self.unknown_16(),
+            'deathday_house': self.deathday_house(),
             'unknown_17': self.unknown_17(),
             'unknown_19': self.unknown_19(),
             'unknown_20': self.unknown_20(),
@@ -412,8 +412,27 @@ class Cat:
         for stat in self.stats_delta_injuries():
             assert(stat <= 0)
 
-        # Does this field always carry a value of -1?
-        assert(self.unknown_16() == -1)
+        # Are there any cats who were born before day -2?
+        # (starter cats should be born on day -2, day 1 strays should be born on day -1)
+        if self.birthday() < -2:
+            assert(False)
+
+        # Iff flags_dead and campaign_dead?
+        flags_dead = bool((self.status_flags() >> 5) & 1)
+        campaign_dead = self.campaign_stats().dead
+        if flags_dead != campaign_dead:
+            assert(False)
+
+        # If deathday_house is not -1, is the cat dead?
+        if not implies(self.deathday_house() != -1, flags_dead or campaign_dead):
+            assert(False)
+
+        # If the cat is dead, is deathday_house not -1
+        # No, deathday_house appears to be written only if the cat died in the house,
+        # probably so that the game can automatically remove its corpse in several days
+        # if not cimplies(self.deathday_house() != -1, flags_dead or campaign_dead):
+        #     print(self.sql_key, flags_dead, campaign_dead, self.deathday_house())
+        #     assert(False)
 
         # Do injury counts correspond to stats_delta_injuries?
         # (note the debuff amounts are specified in injuries.gon)

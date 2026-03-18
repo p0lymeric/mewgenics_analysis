@@ -275,10 +275,14 @@ s32 level @ $;
 double coi @ $;
 
 // Day of birth
-// Age is derived by subtracting properties.current_day
-u64 birthday @ $;
+// -2 and -1 are valid numeric days
+// e.g. starter cats were born on day -2
+s64 birthday @ $;
 
-s64 unknown_16 @ $;
+// Day of death (house deaths only)
+// -1 is an invalidity marker, not a numeric day
+// Only logged when cats die in the house, and not the field
+s64 deathday_house @ $;
 
 // some byte array
 Vector<u64, u8> unknown_17 @ $;
