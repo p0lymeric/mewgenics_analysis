@@ -21,7 +21,11 @@ endif()
 add_library(${HOOK_NAME} SHARED
     amoeba.cpp
     amoeba.def
-    transaction_logger.cpp
+    utilities/transaction_logger.cpp
+)
+
+target_include_directories(${HOOK_NAME} PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 if(MSVC)
@@ -37,8 +41,14 @@ elseif(MINGW)
     set_target_properties(${HOOK_NAME} PROPERTIES PREFIX "")
 endif()
 
-# Instead of building SDL3, we use exported symbols from the exe (Mewgenics_exports) instead
-target_link_libraries(${HOOK_NAME} PRIVATE Detours lz4 dear_imgui SDL3::Headers Mewgenics_exports)
+target_link_libraries(${HOOK_NAME} PRIVATE
+    Detours
+    lz4
+    dear_imgui
+    SDL3::Headers
+    # Instead of building SDL3, we use exported symbols from the exe (Mewgenics_exports) instead
+    Mewgenics_exports
+)
 
 install(TARGETS ${TARGET_NAME} ${HOOK_NAME} RUNTIME DESTINATION bin)
 

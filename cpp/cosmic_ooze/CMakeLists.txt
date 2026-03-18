@@ -21,6 +21,11 @@ endif()
 add_executable(${INJECTOR_NAME} WIN32
     cosmic_ooze.cpp
 )
+
+target_include_directories(${INJECTOR_NAME} PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 if(MSVC)
 elseif(MINGW)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
@@ -34,7 +39,9 @@ elseif(MINGW)
     target_link_options(${INJECTOR_NAME} PRIVATE -municode)
 endif()
 
-target_link_libraries(${INJECTOR_NAME} PRIVATE Detours)
+target_link_libraries(${INJECTOR_NAME} PRIVATE
+    Detours
+)
 
 install(TARGETS ${TARGET_NAME} ${INJECTOR_NAME} RUNTIME DESTINATION bin)
 

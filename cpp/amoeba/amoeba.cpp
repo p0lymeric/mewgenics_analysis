@@ -1,6 +1,9 @@
 #include "amoeba.hpp"
-#include "debug_console.hpp"
-#include "function_hook.hpp"
+#include "utilities/debug_console.hpp"
+#include "utilities/function_hook.hpp"
+#include "utilities/msvcfunc_interceptor.hpp"
+#include "types/msvc.hpp"
+#include "types/glaiel.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -25,13 +28,10 @@ GlobalContext G;
 
 // These addresses were extracted from Mewgenics.exe
 // They are encoded as relative VAs
-// Mewgenics 1.0.20763 (SHA-256 e6cf210e4d1857b7c36ec33f4092290b7b57fe76cab60bf24345ab20fbf78f8c)
-const uintptr_t ADDRESS_glaiel__SQLSaveFile__BeginSave = 0xa02550;
-const uintptr_t ADDRESS_glaiel__SQLSaveFile__EndSave = 0xa025f0;
-const uintptr_t ADDRESS_glaiel__SQLSaveFile__SQL = 0xa01980;
-
-// TLOG_SCHEMA_VERSION_HINT is written onto the meta channel to allow for parser versioning
-const uint64_t TLOG_SCHEMA_VERSION_HINT = 1;
+// Mewgenics 1.0.20870 (SHA-256 969294038979e15f1b6638ea795f9687952c62858e3f98d355f418b0f5e2f814)
+const uintptr_t ADDRESS_glaiel__SQLSaveFile__BeginSave = 0xa03bd0;
+const uintptr_t ADDRESS_glaiel__SQLSaveFile__EndSave = 0xa03c70;
+const uintptr_t ADDRESS_glaiel__SQLSaveFile__SQL = 0xa03000;
 
 std::filesystem::path TLOG_FILE_LOCATION = LR"(C:\Games\test.tlog.lz4)";
 
@@ -137,7 +137,7 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__EndSave,
 
 MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
     void, __cdecl, glaiel__SQLSaveFile__SQL,
-    SQLSaveFile *thiss, HostStdString *ref_query, PodBufferPreallocated<SqlParam, 4> *params, HostStdFunctionNoAlloc<glaiel__SQLSaveFile__SQL_CallableLayout1, void (sqlite3_stmt *p_stmt)> *ref_callback
+    SQLSaveFile *thiss, MsvcReleaseModeXString *ref_query, PodBufferPreallocated<SqlParam, 4> *params, MsvcFuncNoAlloc<glaiel__SQLSaveFile__SQL_CallableLayout1, void (sqlite3_stmt *p_stmt)> *ref_callback
 ) {
     D::debug("glaiel::SQLSaveFile::SQL (this@{:p})\n", static_cast<void *>(thiss));
 
