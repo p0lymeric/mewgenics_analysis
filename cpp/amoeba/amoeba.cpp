@@ -109,7 +109,7 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__BeginSave,
     glaiel__SQLSaveFile__BeginSave_hook.orig(thiss);
 
     if(G.save_scope_counter == 0) {
-        D::chain("    prediction: BEGIN TRANSACTION was issued - {}\n", thiss->file_path);
+        D::chain("    prediction: BEGIN TRANSACTION was issued - {}\n", std::filesystem::path(thiss->file_path.copy_to_native_string()).filename().string());
         G.save_scope_counter++;
     } else {
         G.save_scope_counter++;
@@ -125,11 +125,11 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__EndSave,
     glaiel__SQLSaveFile__EndSave_hook.orig(thiss);
 
     if(G.save_scope_counter == 1) {
-        D::chain("    prediction: COMMIT was issued - {}\n", thiss->file_path);
+        D::chain("    prediction: COMMIT was issued - {}\n", std::filesystem::path(thiss->file_path.copy_to_native_string()).filename().string());
         write_db_to_log(thiss->file_path);
         G.save_scope_counter--;
     } else if (G.save_scope_counter == 0) {
-        D::chain("    save scope counter underflowed--maybe this hook was injected while the game was saving\n", static_cast<void *>(thiss));
+        D::error("Save scope counter underflowed--maybe this hook was injected while the game was saving\n", static_cast<void *>(thiss));
     } else {
         G.save_scope_counter--;
     }
@@ -274,7 +274,7 @@ bool on_attach() {
 
     D::debug("DllMain DLL_PROCESS_ATTACH\n");
     D::debug("Executable base VA: 0x{:x}\n", host_exec_base_va);
-    D::debug("Working directory: {}\n", std::filesystem::current_path().string());
+    // D::debug("Working directory: {}\n", std::filesystem::current_path().string());
 
     // Try to install function hooks
     if(!SFunctionHookRegistry::install_hooks(host_exec_base_va)) {

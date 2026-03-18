@@ -55,7 +55,7 @@ def main():
         unknown_21 = v.unknown_21()
         unknown_22 = v.unknown_22()
         unknown_23 = v.unknown_23()
-        counters = v.counters()
+        injuries = v.injuries()
 
         print(f'{k:08d} {name}')
         print(f'0x{entropy:x} v{version}')
@@ -89,7 +89,7 @@ def main():
         print(f'{unknown_21}')
         print(f'{unknown_22}')
         print(f'{unknown_23}')
-        print(f'{counters}')
+        print(f'{injuries}')
 
 if __name__ == '__main__':
     main()

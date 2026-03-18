@@ -8,7 +8,7 @@ CatCoiMemo = namedtuple('CatCoiMemo', ['parent_a_id', 'parent_b_id', 'coi'])
 BodyPartDescriptor = namedtuple('BodyPartDescriptor', ['part_sprite_idx', 'texture_sprite_idx', 'unknown_0', 'unknown_1_nonzero_on_arms_and_legs', 'unknown_2'])
 BodyParts = namedtuple('BodyParts', ['texture_sprite_idx', 'heritable_palette_idx', 'collar_palette_idx', 'body', 'head', 'tail', 'leg1', 'leg2', 'arm1', 'arm2', 'lefteye', 'righteye', 'lefteyebrow', 'righteyebrow', 'leftear', 'rightear', 'mouth', 'unknown_0', 'unknown_1', 'voice', 'pitch'])
 CatStats = namedtuple('CatStats', ['str', 'dex', 'con', 'int', 'spd', 'cha', 'lck'])
-# CatInjuries = namedtuple('CatInjuries', ['broken_paw', 'torn_tendon', 'broken_rib', 'concussion', 'cha_injury', 'spd_injury', 'lck_injury'])
+Injuries = namedtuple('Injuries', ['broken_paw', 'torn_tendon', 'broken_rib', 'concussion', 'disfigured', 'broken_leg', 'jinxed', 'immolated', 'exsanguinated', 'poisoned', 'cursed', 'radiated', 'unused_0', 'unused_1', 'unused_2', 'unused_3'])
 CampaignStats = namedtuple('CampaignStats', ['hp', 'dead', 'unknown_0', 'unknown_1', 'event_stat_modifiers'])
 # PassiveAbility = namedtuple('PassiveAbility', ['name', 'unknown_0'])
 Equipment = namedtuple('Equipment', ['version', 'has_equipment', 'name', 'unknown_0', 'unknown_1', 'unknown_2', 'unknown_3', 'unknown_4', 'unknown_5', 'unknown_6'])
@@ -319,9 +319,9 @@ class Cat:
         offset = self.unknown_17_offset_past + 14
         return struct.unpack_from(f'<B', self.blob, offset=offset)[0]
 
-    def counters(self):
+    def injuries(self):
         offset = self.unknown_17_offset_past + 15
-        return struct.unpack_from(f'<16I', self.blob, offset=offset)
+        return Injuries._make(struct.unpack_from(f'<16I', self.blob, offset=offset))
 
     def as_dict(self):
         return {
@@ -365,7 +365,7 @@ class Cat:
             'unknown_21': self.unknown_21(),
             'unknown_22': self.unknown_22(),
             'unknown_23': self.unknown_23(),
-            'counters': self.counters(),
+            'injuries': self.injuries(),
         }
 
     def verify_assumptions(self):
@@ -416,15 +416,36 @@ class Cat:
         assert(self.unknown_16() == -1)
 
         # Do injury counts correspond to stats_delta_injuries?
-        for i, stat in enumerate(self.stats_delta_injuries()):
-            # swizzle 4 and 5
-            if i == 4:
-                ii = 5
-            elif i == 5:
-                ii = 4
-            else:
-                ii = i
-            assert(self.counters()[ii] == -stat)
+        # (note the debuff amounts are specified in injuries.gon)
+        expected_debuffs = [
+            # ['str', 'dex', 'con', 'int', 'spd', 'cha', 'lck']
+            [-1, 0, 0, 0, 0, 0, 0], # broken_paw str
+            [0, -1, 0, 0, 0, 0, 0], # torn_tendon dex
+            [0, 0, -1, 0, 0, 0, 0], # broken_rib con
+            [0, 0, 0, -1, 0, 0, 0], # concussion int
+            [0, 0, 0, 0, 0, -1, 0], # disfigured cha
+            [0, 0, 0, 0, -1, 0, 0], # broken_leg spd
+            [0, 0, 0, 0, 0, 0, -1], # jinxed lck
+            [0, 0, 0, 0, 0, -1, -1], # immolated cha lck
+            [-1, -1, 0, 0, 0, 0, 0], # exsanguinated str dex
+            [0, 0, -1, -1, 0, 0, 0], # poisoned con int
+            [0, 0, 0, 0, 0, 0, -2], # cursed lck lck
+            [0, 0, -1, 0, 0, 0, 0], # radiated con
+            [0, 0, 0, 0, 0, 0, 0], # unused
+            [0, 0, 0, 0, 0, 0, 0], # unused
+            [0, 0, 0, 0, 0, 0, 0], # unused
+            [0, 0, 0, 0, 0, 0, 0], # unused
+        ]
+        for stat_idx, stat_debuff_amt in enumerate(self.stats_delta_injuries()):
+            predicted_debuff_amt = 0
+            for injury_idx, injury_cnt in enumerate(self.injuries()):
+                predicted_debuff_amt += expected_debuffs[injury_idx][stat_idx] * injury_cnt
+            if stat_debuff_amt != predicted_debuff_amt:
+                print(self.stats_delta_injuries())
+                print(self.injuries())
+                print(stat_idx, stat_debuff_amt, predicted_debuff_amt)
+                assert(False)
+
 
 def implies(a, b):
     # a => b

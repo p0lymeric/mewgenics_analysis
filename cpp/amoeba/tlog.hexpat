@@ -27,7 +27,7 @@ struct Record {
 
     if(type.ctype == 0) {
         // full record
-        u32 rsvd;
+        u32 user;
         u64 length;
         match(u64(type.stype))  {
             (FullRecordSType::Blob): u8 data[length];

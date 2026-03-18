@@ -294,21 +294,21 @@ u8 unknown_21 @ $;
 u8 unknown_22 @ $;
 u8 unknown_23 @ $;
 
-struct CatInjury {
-    s32 broken_paw;
-    s32 torn_tendon;
-    // note that these two fields are swapped when compared with CatStats
-    s32 broken_rib;
-    s32 concussion;
-    s32 cha_injury;
-    s32 spd_injury;
-    s32 lck_injury;
+// Fixed-sized array with indices corresponding to entries in injuries.gon
+struct Injury {
+    s32 broken_paw; // str
+    s32 torn_tendon; // dex
+    s32 broken_rib; // con
+    s32 concussion; // int
+    s32 disfigured; // cha
+    s32 broken_leg; // spd
+    s32 jinxed; // lck
+    s32 immolated; // cha lck
+    s32 exsanguinated; // str dex
+    s32 poisoned; // con int
+    s32 cursed; // lck lck
+    s32 radiated; // con
+    s32 unused[4];
 };
 
-struct UnknownCompartmentStruct5 {
-    // correlate with injuries minus injury-curing heals
-    CatInjury current_injuries;
-    u32 unknown_0[9];
-};
-
-UnknownCompartmentStruct5 counters @ $;
+Injury injuries @ $;

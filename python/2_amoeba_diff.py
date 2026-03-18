@@ -43,12 +43,33 @@ class MetaInterpreter:
         elif self.state == MetaInterpreterState.HALT:
             return None
 
+class LogInterpreterState(Enum):
+    READY = 0
+    HALT = 1
+
+class LogInterpreter:
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.state = LogInterpreterState.READY
+
+    def message(self, user, value):
+        if self.state == LogInterpreterState.READY:
+            if type(value) is str:
+                user_level = int(user[0])
+                return user_level, value
+        elif self.state == LogInterpreterState.HALT:
+            return None
+
 class SqlStreamInterpreterState(Enum):
     READY = 0
     HALT = 1
-    AWAIT_QUERY_STRING = 2
-    AWAIT_KEY = 3
-    AWAIT_VAL = 4
+    AWAIT_FILENAME = 2
+    AWAIT_SIZE = 3
+    AWAIT_QUERY_STRING = 4
+    AWAIT_KEY = 5
+    AWAIT_VAL = 6
 
 class SqlStreamInterpreter:
     def __init__(self):
@@ -56,49 +77,67 @@ class SqlStreamInterpreter:
 
     def reset(self):
         self.state = SqlStreamInterpreterState.READY
+        self.buf_filename = None
         self.buf_params_count = 0
         self.buf_query_string = ''
         self.buf_key = ''
         self.buf_val = ''
         self.buf_params = {}
 
-    def message(self, value):
-        if self.state == SqlStreamInterpreterState.READY:
-            if type(value) is int:
-                self.buf_params_count = value
-                self.buf_params = {}
-                self.state = SqlStreamInterpreterState.AWAIT_QUERY_STRING
-            else:
-                self.state = SqlStreamInterpreterState.HALT
-        elif self.state == SqlStreamInterpreterState.HALT:
-            return None
-        elif self.state == SqlStreamInterpreterState.AWAIT_QUERY_STRING:
-            if type(value) is str:
-                self.buf_query_string = value
+    def message(self, value, schema):
+        epsilon_jump = True
+        while epsilon_jump:
+            epsilon_jump = False
+            if self.state == SqlStreamInterpreterState.READY:
+                epsilon_jump = True
+                self.state = SqlStreamInterpreterState.AWAIT_FILENAME
+            elif self.state == SqlStreamInterpreterState.HALT:
+                return None
+            elif self.state == SqlStreamInterpreterState.AWAIT_FILENAME:
+                if schema <= 0:
+                    self.buf_filename = None
+                    epsilon_jump = True
+                    self.state = SqlStreamInterpreterState.AWAIT_SIZE
+                else:
+                    if type(value) is str:
+                        self.buf_filename = value
+                        self.state = SqlStreamInterpreterState.AWAIT_SIZE
+                    else:
+                        self.state = SqlStreamInterpreterState.HALT
+            elif self.state == SqlStreamInterpreterState.AWAIT_SIZE:
+                if type(value) is int:
+                    self.buf_params_count = value
+                    self.buf_params = {}
+                    self.state = SqlStreamInterpreterState.AWAIT_QUERY_STRING
+                else:
+                    self.state = SqlStreamInterpreterState.HALT
+            elif self.state == SqlStreamInterpreterState.AWAIT_QUERY_STRING:
+                if type(value) is str:
+                    self.buf_query_string = value
+                    if self.buf_params_count > 0:
+                        self.state = SqlStreamInterpreterState.AWAIT_KEY
+                    else:
+                        self.state = SqlStreamInterpreterState.READY
+                else:
+                    self.state = SqlStreamInterpreterState.HALT
+            elif self.state == SqlStreamInterpreterState.AWAIT_KEY:
+                if type(value) is str:
+                    self.buf_key = value
+                    self.state = SqlStreamInterpreterState.AWAIT_VAL
+                else:
+                    self.state = SqlStreamInterpreterState.HALT
+            elif self.state == SqlStreamInterpreterState.AWAIT_VAL:
+                self.buf_params[self.buf_key] = value
+                self.buf_params_count -= 1
                 if self.buf_params_count > 0:
                     self.state = SqlStreamInterpreterState.AWAIT_KEY
                 else:
                     self.state = SqlStreamInterpreterState.READY
             else:
-                self.state = SqlStreamInterpreterState.HALT
-        elif self.state == SqlStreamInterpreterState.AWAIT_KEY:
-            if type(value) is str:
-                self.buf_key = value
-                self.state = SqlStreamInterpreterState.AWAIT_VAL
-            else:
-                self.state = SqlStreamInterpreterState.HALT
-        elif self.state == SqlStreamInterpreterState.AWAIT_VAL:
-            self.buf_params[self.buf_key] = value
-            self.buf_params_count -= 1
-            if self.buf_params_count > 0:
-                self.state = SqlStreamInterpreterState.AWAIT_KEY
-            else:
-                self.state = SqlStreamInterpreterState.READY
-        else:
-            raise Exception
+                raise Exception
 
         if self.state == SqlStreamInterpreterState.READY:
-            response = (self.buf_query_string, self.buf_params)
+            response = (self.buf_filename, self.buf_query_string, self.buf_params)
             assert(self.buf_params_count == 0)
             return response
 
@@ -305,6 +344,7 @@ def read_full(f, stype, length):
 def main():
     ssd = SavefileStateDiffer()
     mti = MetaInterpreter()
+    lti = LogInterpreter()
     ssi = SqlStreamInterpreter()
     svi = SavefileStreamInterpreter()
     with open(AMOEBA_TLOG_PATH, 'rb') as f:
@@ -321,7 +361,7 @@ def main():
                 if ctype == 0:
                     # full
                     stype = int.from_bytes(f.read(3), 'little', signed=False)
-                    f.read(4) #reserved
+                    user = f.read(4)
                     length = int.from_bytes(f.read(8), 'little', signed=False)
                     rec = read_full(f, stype, length)
                 else:
@@ -333,10 +373,14 @@ def main():
                         current_vsid = rec.x
                 elif current_vsid == 0:
                     mti.message(rec)
+                elif current_vsid == 1:
+                    response = lti.message(user, rec)
+                    # if response is not None:
+                    #     print(response)
                 elif current_vsid == 2:
-                    response = ssi.message(rec)
+                    response = ssi.message(rec, mti.schema)
                     if response:
-                        if not response[0].startswith('SELECT'):
+                        if not response[1].startswith('SELECT'):
                             # print(response[0])
                             pass
                         # print(response)
