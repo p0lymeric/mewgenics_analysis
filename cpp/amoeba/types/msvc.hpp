@@ -63,6 +63,53 @@ struct std::formatter<MsvcReleaseModeXString> : std::formatter<std::string_view>
     }
 };
 
+struct MsvcReleaseModeXWString {
+    union {
+        wchar_t _Buf[8];
+        wchar_t *_Ptr;
+    } _Bx;
+    uint64_t _Mysize;
+    uint64_t _Myres;
+
+    // delete the copy constructor to block implicit copying
+    MsvcReleaseModeXWString(const MsvcReleaseModeXWString&) = delete;
+    MsvcReleaseModeXWString& operator=(const MsvcReleaseModeXWString&) = delete;
+
+    const wchar_t *begin() const {
+        if(this->_Myres < 8) {
+            return &this->_Bx._Buf[0];
+        } else {
+            return this->_Bx._Ptr;
+        }
+    }
+
+    const wchar_t *end() const {
+        if(this->_Myres < 8) {
+            return &this->_Bx._Buf[this->_Mysize];
+        } else {
+            return this->_Bx._Ptr + this->_Mysize;
+        }
+    }
+
+    std::wstring copy_to_native_wstring() const {
+        return std::wstring(this->begin(), this->end());
+    }
+
+    operator std::wstring() const {
+        return this->copy_to_native_wstring();
+    }
+
+    operator std::wstring_view() const {
+        return std::wstring_view(this->begin(), this->_Mysize);
+    }
+};
+template<>
+struct std::formatter<MsvcReleaseModeXWString> : std::formatter<std::wstring_view, wchar_t> {
+    auto format(const MsvcReleaseModeXWString &s, std::wformat_context& ctx) const {
+        return std::formatter<std::wstring_view, wchar_t>::format(s, ctx);
+    }
+};
+
 // MSVC Func (std::function)
 // Based off _Func_impl_no_alloc & friends
 // https://github.com/microsoft/STL/blob/26b7ca58ee3151c81736088e554e5797cafca641/stl/inc/functional
@@ -119,4 +166,19 @@ struct MsvcFuncNoAlloc_vtable<_Callable, _Rx(_Types...)> {
     const MsvcTypeInfo* (* _Target_type)(Impl const* thiss);
     void (* _Delete_this)(Impl* thiss, bool _Dealloc);
     const void* (* _Get)(Impl const* thiss);
+};
+
+// MSVC List (std::list), laid out as compiled in Release mode
+// https://github.com/microsoft/STL/blob/2626cf1ee9d26be701b9bdbd2fb30db240456456/stl/inc/list
+template<class _Value_type>
+struct MsvcReleaseModeListNode {
+    MsvcReleaseModeListNode *_Next; // successor node, or first element if head
+    MsvcReleaseModeListNode *_Prev; // predecessor node, or last element if head
+    _Value_type _Myval; // the stored value, unused if head
+};
+
+template<class _Value_type>
+struct MsvcReleaseModeList {
+    MsvcReleaseModeListNode<_Value_type> *_Myhead; // pointer to head node
+    uint64_t _Mysize; // number of elements
 };

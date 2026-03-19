@@ -1,4 +1,5 @@
 #pragma once
+#include "utilities/memory.hpp"
 
 #include "msvc.hpp"
 #include "sqlite3.hpp"
@@ -6,8 +7,6 @@
 #include <cstdint>
 #include <string>
 #include <format>
-
-#include <windows.h>
 
 // Reconstructions of Mewgenics structures.
 //
@@ -108,7 +107,7 @@ struct std::formatter<SqlData> : std::formatter<std::string> {
 inline std::string SqlData::untrusted_format() {
     // for debug printing, to allow "maybe pointers" to SqlData to be scrutinized without punishment
     SqlData buf;
-    if(ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(this), &buf, sizeof(buf), NULL)) {
+    if(jf_read(reinterpret_cast<void *>(this), &buf)) {
         switch(buf.type) {
             case Text:
                 return std::format("{} <string data@{:p}, unused={}>", buf.type, buf.value.as_blob_ptr, buf.length);
@@ -167,4 +166,68 @@ struct PodBufferPreallocated {
 struct glaiel__SQLSaveFile__SQL_CallableLayout1 {
     int32_t *sqlite3_datatype;
     SqlData *result;
+};
+
+struct CatData {
+    uint64_t random_u64;
+    int64_t unknown_17;
+    char* field_10;
+    struct MsvcReleaseModeXWString name;
+    struct MsvcReleaseModeXString nametag_decoration;
+    int32_t sex;
+    int32_t sex_dup;
+    // ...
+};
+
+// possibly a std::pair but we'll represent it as a struct
+struct SqlKeyCatDataPair {
+    int64_t sql_key;
+    CatData *cat;
+};
+
+struct CatDatabase {
+    void *vtable;
+    char _8[0x30];
+    char _38[8];
+    char _40[0x40];
+    char _80[0x40];
+    char _c0[0x30];
+    MsvcReleaseModeList<SqlKeyCatDataPair> cats;
+    char _100[0x28];
+    char _128[8];
+    MsvcReleaseModeList<int64_t> cats_to_delete;
+    // likely more stuff...
+};
+
+struct MewDirector {
+    char _0[0x28];
+    char _28[0x10];
+    char sql_related[0x8];
+    char _40[0x40];
+    char _80[0x40];
+    char _c0[0x40];
+    char _100[0x40];
+    char _140[0x40];
+    char _180[0x40];
+    char _1c0[0x40];
+    char _200[0x40];
+    char _240[0x40];
+    char _280[0x40];
+    char _2c0[0x40];
+    char _300[0x40];
+    char _340[0x40];
+    char _380[0x40];
+    char _3c0[0x40];
+    char _400[0x40];
+    char _440[0x40];
+    char _480[0x28];
+    char _4a8[0x18];
+    char _4c0[0x40];
+    char _500[0x40];
+    char _540[0x40];
+    char _580[8];
+    char _588[8];
+    char _590[8];
+    CatDatabase* cats;
+    // likely a LOT more stuff...
 };

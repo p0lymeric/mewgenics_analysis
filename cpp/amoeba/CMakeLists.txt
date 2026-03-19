@@ -21,6 +21,8 @@ endif()
 add_library(${HOOK_NAME} SHARED
     amoeba.cpp
     amoeba.def
+    amoeba_sql_logger.cpp
+    amoeba_imgui.cpp
     utilities/transaction_logger.cpp
 )
 

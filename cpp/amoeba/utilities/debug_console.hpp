@@ -4,6 +4,7 @@
 #define ENABLE_DEBUG_CONSOLE
 
 #include "transaction_logger.hpp"
+#include "utilities/strings.hpp"
 
 #include <cstdint>
 #include <string>
@@ -70,7 +71,7 @@ public:
         return this->cap;
     }
 
-    const T& operator[](size_t idx) {
+    T& operator[](size_t idx) {
         return buf[(head + this->cap - 1 - idx) % this->cap];
     }
 private:
@@ -110,10 +111,8 @@ public:
         return d;
     }
 
-    static void printmb(std::string multibyte) {
-        int wchar_count = MultiByteToWideChar(CP_UTF8, 0, multibyte.data(), static_cast<int>(multibyte.length()), NULL, 0);
-        std::wstring wide(wchar_count, L'\0');
-        MultiByteToWideChar(CP_UTF8, 0, multibyte.data(), static_cast<int>(multibyte.length()), wide.data(), wchar_count);
+    static void printmb(std::string_view multibyte) {
+        std::wstring wide = convert_utf8_string_to_utf16_wstring(multibyte);
         WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE), wide.data(), static_cast<DWORD>(wide.length()), NULL, NULL);
     }
 
@@ -138,13 +137,30 @@ public:
             this->tlogger->write_string(multibyte, user);
         }
         if(this->internal_buffer_enable) {
-            if(multibyte.length() > this->internal_buffer_max_message_length) {
-                std::string sliced = multibyte.substr(0, this->internal_buffer_max_message_length);
-                DebugConsoleMessage dcm { .message = sliced, .timestamp = now, .level = level, .truncated = true };
-                this->internal_buffer.push(dcm);
+            if(level == DebugConsoleLevel::Chain && internal_buffer.size() > 0) {
+                auto &last_message = internal_buffer[0];
+                if(multibyte.length() + last_message.message.length() <= this->internal_buffer_max_message_length) {
+                    last_message.message.append(multibyte);
+                } else if (!last_message.truncated) {
+                    size_t used = last_message.message.length();
+                    size_t remaining = this->internal_buffer_max_message_length - used;
+                    std::string sliced = multibyte.substr(0, remaining);
+                    last_message.message.append(sliced);
+                    last_message.truncated = true;
+                }
+                // NB if we allowed max message length to be dynamically upsized
+                // we won't allow appends to an already truncated string
             } else {
-                DebugConsoleMessage dcm { .message = multibyte, .timestamp = now, .level = level, .truncated = false };
-                this->internal_buffer.push(dcm);
+                // if we receive a chainlink while the log is empty, place it in a new Debug level message
+                DebugConsoleLevel effective_level = (level == DebugConsoleLevel::Chain) ? DebugConsoleLevel::Debug : level;
+                if(multibyte.length() > this->internal_buffer_max_message_length) {
+                    std::string sliced = multibyte.substr(0, this->internal_buffer_max_message_length);
+                    DebugConsoleMessage dcm { .message = sliced, .timestamp = now, .level = effective_level, .truncated = true };
+                    this->internal_buffer.push(dcm);
+                } else {
+                    DebugConsoleMessage dcm { .message = multibyte, .timestamp = now, .level = effective_level, .truncated = false };
+                    this->internal_buffer.push(dcm);
+                }
             }
         }
     }
