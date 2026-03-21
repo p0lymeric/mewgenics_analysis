@@ -1,7 +1,7 @@
 #pragma once
 
 // Opens a console on the host process via AllocConsole and uses the host's stdout for writing debug prints
-#define ENABLE_DEBUG_CONSOLE
+// #define SHOW_WIN32_CONSOLE
 
 #include "transaction_logger.hpp"
 #include "utilities/strings.hpp"
@@ -16,7 +16,7 @@
 //
 // polymeric 2026
 
-#ifdef ENABLE_DEBUG_CONSOLE
+#ifdef SHOW_WIN32_CONSOLE
 #define ALLOC_CONSOLE() AllocConsole()
 #define FREE_CONSOLE() FreeConsole()
 #else
@@ -120,7 +120,7 @@ public:
     void log(DebugConsoleLevel level, std::format_string<Args...> fmt, Args&&... args) {
         std::string multibyte = std::format(fmt, std::forward<Args>(args)...);
         auto now = std::chrono::system_clock::now();
-        #ifdef ENABLE_DEBUG_CONSOLE
+        #ifdef SHOW_WIN32_CONSOLE
         if(level == DebugConsoleLevel::Chain) {
             printmb(multibyte);
         } else {

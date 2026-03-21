@@ -72,6 +72,9 @@ public:
     TransactionLogger(std::filesystem::path file_path, bool use_lz4);
     ~TransactionLogger();
 
+    void open();
+    void close();
+
     void reset(bool write_full = false);
     void select_vsid(uint32_t vsid, bool write_full = false);
     void set_timestamp(int64_t timestamp_us_unix_epoch, bool write_full=false);

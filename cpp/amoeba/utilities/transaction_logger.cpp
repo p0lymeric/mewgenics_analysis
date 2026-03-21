@@ -11,27 +11,44 @@
 
 TransactionLogger::TransactionLogger(std::filesystem::path file_path, bool use_lz4) {
     this->file_path = file_path;
-    this->file = std::ofstream(file_path, std::ios::binary); // TODO can throw
-    this->stream_buffer.resize(this->CHUNK_SIZE);
     this->lz4_preferences = LZ4F_INIT_PREFERENCES;
     if(use_lz4) {
         this->format = 1;
-        LZ4F_createCompressionContext(&this->lz4_cctx, LZ4F_VERSION); // TODO can fail
-        this->compress_buffer.resize((std::max)(static_cast<size_t>(LZ4F_HEADER_SIZE_MAX), LZ4F_compressBound(this->CHUNK_SIZE, &this->lz4_preferences)));
     } else {
         this->format = 0;
-        this->lz4_cctx = nullptr;
     }
-
-    write_header();
 }
 
 TransactionLogger::~TransactionLogger() {
-    write_footer();
+    this->close();
+}
 
-    // nullptr check is internal to the library function
-    LZ4F_freeCompressionContext(this->lz4_cctx);
-    this->file.close();
+void TransactionLogger::open() {
+    if(!this->file.is_open()) {
+        this->file = std::ofstream(this->file_path, std::ios::binary); // TODO can throw
+        this->stream_buffer.resize(this->CHUNK_SIZE);
+        if(this->format == 1) {
+            LZ4F_createCompressionContext(&this->lz4_cctx, LZ4F_VERSION); // TODO can fail
+            this->compress_buffer.resize((std::max)(static_cast<size_t>(LZ4F_HEADER_SIZE_MAX), LZ4F_compressBound(this->CHUNK_SIZE, &this->lz4_preferences)));
+        }
+
+        write_header();
+    }
+}
+
+void TransactionLogger::close() {
+    if(this->file.is_open()) {
+        write_footer();
+
+        if(this->format == 1) {
+            this->compress_buffer.clear();
+            // nullptr check is internal to the library function
+            LZ4F_freeCompressionContext(this->lz4_cctx);
+        }
+        this->stream_buffer.clear();
+
+        this->file.close();
+    }
 }
 
 void TransactionLogger::reset(bool write_full) {
@@ -119,7 +136,35 @@ void TransactionLogger::write_footer() {
 }
 
 void TransactionLogger::write_wrapped(const char* ptr, uint64_t size) {
-    if(this->format == 1) {
+    if(file.is_open()) {
+        if(this->format == 1) {
+            uint64_t remaining_size = size;
+            uint64_t size_to_stream = CHUNK_SIZE;
+            while(remaining_size > 0) {
+                if(remaining_size < this->CHUNK_SIZE) {
+                    size_to_stream = remaining_size;
+                    remaining_size = 0;
+                } else {
+                    remaining_size -= CHUNK_SIZE;
+                }
+                size_t written_size = LZ4F_compressUpdate(this->lz4_cctx, this->compress_buffer.data(), this->compress_buffer.size(), ptr, size_to_stream, nullptr);
+                ptr += size_to_stream;
+                if(LZ4F_isError(written_size)) {
+                    // TODO somehow signal error
+                    D::error("lz4 - error - {}", LZ4F_getErrorName(written_size));
+                }
+                if(written_size > 0) {
+                    this->file.write(this->compress_buffer.data(), written_size);
+                }
+            }
+        } else {
+            this->file.write(reinterpret_cast<const char*>(ptr), size);
+        }
+    }
+}
+
+void TransactionLogger::write_wrapped_ifstream(std::ifstream& ifstream, uint64_t size) {
+    if(file.is_open()) {
         uint64_t remaining_size = size;
         uint64_t size_to_stream = CHUNK_SIZE;
         while(remaining_size > 0) {
@@ -129,43 +174,19 @@ void TransactionLogger::write_wrapped(const char* ptr, uint64_t size) {
             } else {
                 remaining_size -= CHUNK_SIZE;
             }
-            size_t written_size = LZ4F_compressUpdate(this->lz4_cctx, this->compress_buffer.data(), this->compress_buffer.size(), ptr, size_to_stream, nullptr);
-            ptr += size_to_stream;
-            if(LZ4F_isError(written_size)) {
-                // TODO somehow signal error
-                D::error("lz4 - error - {}", LZ4F_getErrorName(written_size));
+            ifstream.read(stream_buffer.data(), size_to_stream);
+            if(this->format == 1) {
+                size_t written_size = LZ4F_compressUpdate(this->lz4_cctx, this->compress_buffer.data(), this->compress_buffer.size(), stream_buffer.data(), size_to_stream, nullptr);
+                if(LZ4F_isError(written_size)) {
+                    // TODO somehow signal error
+                    D::error("lz4 - error - {}", LZ4F_getErrorName(written_size));
+                }
+                if(written_size > 0) {
+                    this->file.write(this->compress_buffer.data(), written_size);
+                }
+            } else {
+                this->file.write(stream_buffer.data(), size_to_stream);
             }
-            if(written_size > 0) {
-                this->file.write(this->compress_buffer.data(), written_size);
-            }
-        }
-    } else {
-        this->file.write(reinterpret_cast<const char*>(ptr), size);
-    }
-}
-
-void TransactionLogger::write_wrapped_ifstream(std::ifstream& ifstream, uint64_t size) {
-    uint64_t remaining_size = size;
-    uint64_t size_to_stream = CHUNK_SIZE;
-    while(remaining_size > 0) {
-        if(remaining_size < this->CHUNK_SIZE) {
-            size_to_stream = remaining_size;
-            remaining_size = 0;
-        } else {
-            remaining_size -= CHUNK_SIZE;
-        }
-        ifstream.read(stream_buffer.data(), size_to_stream);
-        if(this->format == 1) {
-            size_t written_size = LZ4F_compressUpdate(this->lz4_cctx, this->compress_buffer.data(), this->compress_buffer.size(), stream_buffer.data(), size_to_stream, nullptr);
-            if(LZ4F_isError(written_size)) {
-                // TODO somehow signal error
-                D::error("lz4 - error - {}", LZ4F_getErrorName(written_size));
-            }
-            if(written_size > 0) {
-                this->file.write(this->compress_buffer.data(), written_size);
-            }
-        } else {
-            this->file.write(stream_buffer.data(), size_to_stream);
         }
     }
 }

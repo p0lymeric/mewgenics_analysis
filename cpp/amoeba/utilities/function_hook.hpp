@@ -65,67 +65,80 @@ public:
         return registry;
     }
 
+    static bool& installed() {
+        static bool installed = false;
+        return installed;
+    }
+
     static bool install_hooks(uintptr_t host_exec_base_va) {
-        #ifdef USE_DETOURS_HOOK_IMPL
-        if(DetourTransactionBegin() != NO_ERROR) {
-            return false;
-        }
-
-        if(DetourUpdateThread(GetCurrentThread()) != NO_ERROR) {
-            return false;
-        }
-        #else
-        if(MH_Initialize() != MH_OK) {
-            return false;
-        }
-        #endif
-
-        for(auto hook: SFunctionHookRegistry::get_registry()) {
-            if (!hook->install(host_exec_base_va)) {
+        if(!SFunctionHookRegistry::installed()) {
+            #ifdef USE_DETOURS_HOOK_IMPL
+            if(DetourTransactionBegin() != NO_ERROR) {
                 return false;
             }
+
+            if(DetourUpdateThread(GetCurrentThread()) != NO_ERROR) {
+                return false;
+            }
+            #else
+            if(MH_Initialize() != MH_OK) {
+                return false;
+            }
+            #endif
+
+            for(auto hook: SFunctionHookRegistry::get_registry()) {
+                if (!hook->install(host_exec_base_va)) {
+                    return false;
+                }
+            }
+
+            #ifdef USE_DETOURS_HOOK_IMPL
+            if(DetourTransactionCommit() != NO_ERROR) {
+                return false;
+            }
+            #else
+            if(MH_EnableHook(MH_ALL_HOOKS) != MH_OK) {
+                return false;
+            }
+            #endif
         }
 
-        #ifdef USE_DETOURS_HOOK_IMPL
-        if(DetourTransactionCommit() != NO_ERROR) {
-            return false;
-        }
-        #else
-        if(MH_EnableHook(MH_ALL_HOOKS) != MH_OK) {
-            return false;
-        }
-        #endif
-
+        SFunctionHookRegistry::installed() = true;
         return true;
     }
 
     static bool uninstall_hooks() {
-        #ifdef USE_DETOURS_HOOK_IMPL
-        if(DetourTransactionBegin() != NO_ERROR) {
-            return false;
-        }
-
-        if(DetourUpdateThread(GetCurrentThread()) != NO_ERROR) {
-            return false;
-        }
-
-        for(auto hook: SFunctionHookRegistry::get_registry()) {
-            if (!hook->uninstall()) {
+        // Detours will return a failure code if zero items are queued in a transaction
+        // we won't try to start a transaction if we know we have nothing to uninstall
+        if(SFunctionHookRegistry::installed()) {
+            #ifdef USE_DETOURS_HOOK_IMPL
+            if(DetourTransactionBegin() != NO_ERROR) {
                 return false;
             }
+
+            if(DetourUpdateThread(GetCurrentThread()) != NO_ERROR) {
+                return false;
+            }
+
+            for(auto hook: SFunctionHookRegistry::get_registry()) {
+                if (!hook->uninstall()) {
+                    return false;
+                }
+            }
+
+            if(DetourTransactionCommit() != NO_ERROR) {
+                return false;
+            }
+            #else
+            // MinHook disables and removes hooks as part of uninit
+            // It keeps an internal list so there is no need to iterate ourselves
+            if(MH_Uninitialize() != MH_OK) {
+                return false;
+            }
+            #endif
         }
 
-        if(DetourTransactionCommit() != NO_ERROR) {
-            return false;
-        }
-        #else
-        // MinHook disables and removes hooks as part of uninit
-        // It keeps an internal list so there is no need to iterate ourselves
-        if(MH_Uninitialize() != MH_OK) {
-            return false;
-        }
-        #endif
-
+        SFunctionHookRegistry::installed() = false;
         return true;
     }
 };
@@ -138,7 +151,6 @@ public:
     // VA of the detour function. This FP references the function we declared with MAKE_HOOK.
     const FP detour;
     // VA of the trampoline function. The detour function calls this FP to execute the targeted function's original implementation.
-    // Non-nullity implies the hook is currently installed and valid.
     FP orig;
 
     BFunctionHookDescriptor(FP detour) :
@@ -152,50 +164,42 @@ public:
     virtual FP calculate_target(uintptr_t offset) = 0;
 
     bool install(uintptr_t offset) override {
-        if(this->orig == nullptr) {
-            this->target = this->calculate_target(offset);
-            if(this->target == nullptr) {
-                // e.g. if GetProcAddress were to fail
-                return false;
-            }
-            #ifdef USE_DETOURS_HOOK_IMPL
-            this->orig = this->target;
-            if (DetourAttach(reinterpret_cast<PVOID *>(&this->orig), reinterpret_cast<PVOID>(this->detour)) != NO_ERROR) {
-                this->orig = nullptr;
-                return false;
-            }
-            #else
-            if(MH_CreateHook(reinterpret_cast<LPVOID>(this->target), reinterpret_cast<LPVOID>(this->detour), reinterpret_cast<LPVOID *>(&this->orig)) != MH_OK) {
-                // ppOriginal is only written if hooking succeeded, so it will remain nullptr
-                // this->orig = nullptr;
-                return false;
-            }
-            #endif
-            return true;
-        } else {
+        this->target = this->calculate_target(offset);
+        if(this->target == nullptr) {
+            // e.g. if GetProcAddress were to fail
             return false;
         }
+        #ifdef USE_DETOURS_HOOK_IMPL
+        this->orig = this->target;
+        if (DetourAttach(reinterpret_cast<PVOID *>(&this->orig), reinterpret_cast<PVOID>(this->detour)) != NO_ERROR) {
+            return false;
+        }
+        #else
+        if(MH_CreateHook(reinterpret_cast<LPVOID>(this->target), reinterpret_cast<LPVOID>(this->detour), reinterpret_cast<LPVOID *>(&this->orig)) != MH_OK) {
+            // ppOriginal is only written if hooking succeeded
+            return false;
+        }
+        #endif
+        return true;
     }
 
     bool uninstall() override {
-        if(this->orig != nullptr) {
-            #ifdef USE_DETOURS_HOOK_IMPL
-            if (DetourDetach(reinterpret_cast<PVOID *>(&this->orig), reinterpret_cast<PVOID>(this->detour)) != NO_ERROR) {
-                return false;
-            }
-            #else
-            if(MH_RemoveHook(reinterpret_cast<LPVOID>(this->target)) != MH_OK) {
-                return false;
-            }
-            #endif
-            this->orig = nullptr;
-            return true;
-        } else {
+        #ifdef USE_DETOURS_HOOK_IMPL
+        // &this->orig is captured and isn't written back until DetourTransactionCommit... very evil
+        if (DetourDetach(reinterpret_cast<PVOID *>(&this->orig), reinterpret_cast<PVOID>(this->detour)) != NO_ERROR) {
             return false;
         }
+        #else
+        if(MH_RemoveHook(reinterpret_cast<LPVOID>(this->target)) != MH_OK) {
+            return false;
+        }
+        #endif
+        return true;
     }
 };
 
+// NB MinHook appears to fail at handling FPs that proxy through jump tables, unlike Detours.
+// For the case of hooking imports, ProcFunctionHookDescriptor will resolve past the jump table.
 template<typename FP, bool RegisterMe>
 class VaFunctionHookDescriptor : public BFunctionHookDescriptor<FP, RegisterMe> {
 public:

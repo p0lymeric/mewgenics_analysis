@@ -175,10 +175,43 @@ struct MsvcReleaseModeListNode {
     MsvcReleaseModeListNode *_Next; // successor node, or first element if head
     MsvcReleaseModeListNode *_Prev; // predecessor node, or last element if head
     _Value_type _Myval; // the stored value, unused if head
+
+    // delete the copy constructor to block implicit copying
+    MsvcReleaseModeListNode(const MsvcReleaseModeListNode&) = delete;
+    MsvcReleaseModeListNode& operator=(const MsvcReleaseModeListNode&) = delete;
 };
 
 template<class _Value_type>
 struct MsvcReleaseModeList {
     MsvcReleaseModeListNode<_Value_type> *_Myhead; // pointer to head node
     uint64_t _Mysize; // number of elements
+
+    // delete the copy constructor to block implicit copying
+    MsvcReleaseModeList(const MsvcReleaseModeList&) = delete;
+    MsvcReleaseModeList& operator=(const MsvcReleaseModeList&) = delete;
+};
+
+// MSVC Vector (std::vector), laid out as compiled in Release mode
+// https://github.com/microsoft/STL/blob/2626cf1ee9d26be701b9bdbd2fb30db240456456/stl/inc/vector
+template<class _Value_type>
+struct MsvcReleaseModeVector {
+    _Value_type *_Myfirst;
+    _Value_type *_Mylast;
+    _Value_type *_Myend;
+
+    // delete the copy constructor to block implicit copying
+    MsvcReleaseModeVector(const MsvcReleaseModeVector&) = delete;
+    MsvcReleaseModeVector& operator=(const MsvcReleaseModeVector&) = delete;
+
+    size_t size() {
+        return this->_Mylast - this->_Myfirst;
+    }
+
+    size_t capacity() {
+        return this->_Myend - this->_Myfirst;
+    }
+
+    _Value_type& operator[](size_t idx) {
+        return _Myfirst[idx];
+    }
 };

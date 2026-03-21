@@ -3,8 +3,6 @@
 #include "utilities/transaction_logger.hpp"
 
 #include <cstdint>
-#include <set>
-#include <string>
 
 // Main program declarations.
 //
@@ -13,6 +11,7 @@
 // CROSS-TU DECLARATIONS
 
 // The "everything" struct
+// Exporter: amoeba.cpp
 struct GlobalContext;
 extern GlobalContext G;
 
@@ -27,6 +26,16 @@ inline constexpr uintptr_t ADDRESS_glaiel__SQLSaveFile__EndSave = 0xa03c70;
 inline constexpr uintptr_t ADDRESS_glaiel__SQLSaveFile__SQL = 0xa03000;
 inline constexpr uintptr_t ADDRESS_glaiel__MewDirector__p_singleton = 0x13ce230;
 
+// Call to deinitialize imgui
+// Exporter: amoeba_imgui.cpp
+void deinitialize_imgui();
+// Call to finalize our logs and kill the host process
+// Exporter: amoeba.cpp
+void do_process_termination();
+// Call to gracefully remove Amoeba from the process
+// Exporter: amoeba.cpp
+void initiate_dll_eject();
+
 // TYPE DECLARATIONS
 
 enum TlogVsid : uint32_t {
@@ -36,16 +45,11 @@ enum TlogVsid : uint32_t {
     SaveData = 3,
 };
 
-struct ImguiState {
-    bool initialized;
-    bool visible;
-    bool swapwindow_hook_nested_call_guard;
-};
-
 struct GlobalContext {
-    uintptr_t host_exec_base_va; // if hooks are installed, this will necessarily be valid
-    uint32_t save_scope_counter;
-    std::set<std::string> witnessed_db_paths;
+    // This will necessarily be resolved if sampled inside a hook
+    uintptr_t dll_base_va;
+    // This will necessarily be resolved if sampled inside a hook
+    uintptr_t host_exec_base_va;
+    // TODO since this class isn't RAII anymore, don't need to dynamically allocate
     TransactionLogger *tlogger;
-    ImguiState ig;
 };

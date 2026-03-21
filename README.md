@@ -1,7 +1,6 @@
 A loose collection of scripts and artifacts written to explore Mewgenics game data and implementation.
 
-* **Amoeba** (cpp/amoeba): A dll hook that attaches to a Mewgenics game instance and collects every autosave and SQL query for offline analysis
-    * (e.g. what parts of a cat data structure change after obtaining a mutation?).
+* **Amoeba** (cpp/amoeba): A dll hook that attaches to a Mewgenics game instance and provides tools for in-game data exploration and save logging.
 * **ImHex patterns** (imhex_patterns/*): Human-readable patterns for parsing game structures, derived from decompilation, experimentation, and analysis.
 * **Save parser and assertions** (python/dumped_save.py): Save parser written at parity with ImHex patterns. Assertions against properties and relationships between data fields.
     * (e.g. if this field is nonzero, does that mean the cat has a lover?).

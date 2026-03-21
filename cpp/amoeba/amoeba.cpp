@@ -6,11 +6,6 @@
 
 #include "detours.h"
 
-// needed for now for detach cleanup
-#include "imgui.h"
-#include "imgui_impl_sdl3.h"
-#include "imgui_impl_opengl3.h"
-
 // Amoeba
 //
 // Attaches to a Mewgenics process and exposes some reverse-engineering tools.
@@ -30,6 +25,9 @@ bool on_attach() {
 
     // Instantiate the transaction logger
     G.tlogger = new TransactionLogger(TLOG_FILE_LOCATION, true);
+    // open its backing file for write
+    // TODO add option to enable transaction logging in imgui interface
+    // G.tlogger->open();
     // and write a schema hint to the meta channel
     G.tlogger->select_vsid(TlogVsid::Meta);
     G.tlogger->set_timestamp_now();
@@ -42,9 +40,9 @@ bool on_attach() {
     // Enable the debug console internal message buffer
     D::enable_internal_buffer(1000, 1000);
 
-    D::debug("DllMain DLL_PROCESS_ATTACH\n");
-    D::debug("Executable base VA: 0x{:x}\n", host_exec_base_va);
-    // D::debug("Working directory: {}\n", std::filesystem::current_path().string());
+    D::info("DllMain DLL_PROCESS_ATTACH\n");
+    D::info("Hook base VA: 0x{:x}\n", G.dll_base_va);
+    D::info("Executable base VA: 0x{:x}\n", host_exec_base_va);
 
     // Try to install function hooks
     if(!SFunctionHookRegistry::install_hooks(host_exec_base_va)) {
@@ -58,24 +56,19 @@ bool on_attach() {
 }
 
 bool on_unload_detach() {
-    D::debug("DllMain DLL_PROCESS_DETACH (unload)\n");
+    D::info("DllMain DLL_PROCESS_DETACH (unload)\n");
     // try to gracefully remove our hooks if this dll
     // was unloaded outside a process exit
     if(!SFunctionHookRegistry::uninstall_hooks()) {
         // if hook uninstallation failed, call TerminateProcess
         return false;
     }
-    if(G.ig.initialized) {
-        // TODO try to move these references into amoeba_imgui
-        ImGui_ImplOpenGL3_Shutdown();
-        ImGui_ImplSDL3_Shutdown();
-        ImGui::DestroyContext();
-    }
+    deinitialize_imgui();
     return true;
 }
 
 bool on_exitprocess_detach() {
-    D::debug("DllMain DLL_PROCESS_DETACH (ExitProcess)\n");
+    D::info("DllMain DLL_PROCESS_DETACH (ExitProcess)\n");
     return true;
 }
 
@@ -85,9 +78,9 @@ void final_rites(bool is_detach, bool terminate_process) {
     // diagnostic print could flicker on screen
     if(terminate_process) {
         if(is_detach) {
-            D::debug("An unrecoverable error occurred during dll uninitialization.\n");
+            D::error("An unrecoverable error occurred during dll uninitialization.\n");
         } else {
-            D::debug("An unrecoverable error occurred during dll initialization.\n");
+            D::error("An unrecoverable error occurred during dll initialization.\n");
         }
     } else {
         FREE_CONSOLE();
@@ -101,14 +94,60 @@ void final_rites(bool is_detach, bool terminate_process) {
     delete G.tlogger;
 }
 
+void do_process_termination() {
+    final_rites(true, true);
+    TerminateProcess(GetCurrentProcess(), 1);
+}
+
+struct DllEjectReaperContext {
+};
+
+DWORD WINAPI dll_eject_reaper(LPVOID ctx) {
+    DllEjectReaperContext *myctx = reinterpret_cast<DllEjectReaperContext *>(ctx);
+    delete myctx;
+    // In the reaper:
+    // 1. Start a 10s watchdog timer.
+    // 2. After 100 ms and every 100 ms thereafter, snapshot the requestor's registers
+    //    and check IP/stack to see if it's in the DLL.
+    // 3a. If the thread is out of the DLL, call FreeLibraryAndExitThread.
+    // 3b. If the watchdog timer has expired, call TerminateProcess.
+    // 4. Eventually Windows will call DLL_PROCESS_DETACH to finalize the detachment.
+
+    // TODO steps 1, 2, and 3b. Sleep followed by blind detach is good enough for now.
+
+    // don't fear the reaper...
+    Sleep(100);
+    FreeLibraryAndExitThread(reinterpret_cast<HMODULE>(G.dll_base_va), 0);
+    // unreachable
+    // return 0;
+}
+
+void initiate_dll_eject() {
+    // This thread:
+    // 1. Uninstall all hooks. If we failed then call TerminateProcess.
+    // 2. Fork a reaper thread.
+    // 3. The requestor must exit the DLL as quickly as possible.
+
+    // Uninstall hooks now to guarantee no future call can enter this DLL after we leave
+    // (assuming the hooked routines can only be executed by one thread)
+    if(!SFunctionHookRegistry::uninstall_hooks()) {
+        // if hook uninstallation failed, call TerminateProcess
+        do_process_termination();
+    }
+
+    // Fork a reaper thread. It will take care of the rest.
+    DllEjectReaperContext *ctx = new DllEjectReaperContext();
+    CloseHandle(CreateThread(NULL, 0, &dll_eject_reaper, ctx, 0, NULL));
+
+    // Now this thread needs to blow this popsicle stand!
+    return;
+}
+
 BOOL WINAPI DllMain(
     HINSTANCE hinstDLL,  // handle to DLL module
     DWORD fdwReason,     // reason for calling function
     LPVOID lpReserved    // reserved
 ) {
-    // unused argument, suppresses C4100
-    (void)hinstDLL;
-
     if(DetourIsHelperProcess()) {
         return TRUE;
     }
@@ -121,6 +160,8 @@ BOOL WINAPI DllMain(
             // Initialize once for each new process.
             // Return FALSE to fail DLL load.
             DetourRestoreAfterWith();
+
+            G.dll_base_va = reinterpret_cast<uintptr_t>(hinstDLL);
 
             if(!on_attach()) {
                 terminate_process = true;
