@@ -70,23 +70,27 @@ Sex sex @ $;
 Sex sex_dup @ $;
 
 bitfield StatusFlagsB0 {
-    cannot_adventure : 1;
-    returned : 1;
-    unknown_0 : 3;
-    dead : 1;
-    unknown_1: 2;
+    cannot_adventure : 1;         // 0; went out before or senile
+    returned : 1;                 // 1
+    starving: 1;                  // 2
+    unknown_0 : 2;                // 4:3
+    dead : 1;                     // 5
+    unknown_1: 2;                 // 7:6
 };
 bitfield StatusFlagsB1 {
-    unknown_0 : 5;
-    c : 1;
-    d : 1;
-    donated_to_organ_grinder : 1;
+    unknown_0 : 3;                // 10:8
+    donated_to_dr_beanies : 1;    // 11
+    dontated_to_butch : 1;        // 12
+    c : 1;                        // 13
+    donated_to_tracy : 1;         // 14
+    donated_to_organ_grinder : 1; // 15
 };
 bitfield StatusFlagsB2 {
-    donated_to_frank : 1;
-    unknown_0 : 1;
-    e : 1;
-    unknown_1 : 5;
+    donated_to_frank : 1;         // 16
+    donated_to_baby_jack : 1;     // 17
+    e : 1;                        // 18
+    on_adventure: 1;              // 19
+    unknown_1 : 4;                // 23:20
 };
 bitfield StatusFlagsB3To7 {
     unknown_b3_0: 8;
@@ -141,7 +145,7 @@ struct BodyPartDescriptor {
     // need to validate by twiddling these numbers
     s32 part_sprite_idx;
     s32 texture_sprite_idx;
-    s32 unknown_0;
+    s32 unknown_0; // scar_sprite_idx
     s32 unknown_1_nonzero_on_arms_and_legs;
     s32 unknown_2;
 };
@@ -204,7 +208,7 @@ String last_injury_debuffed_stat @ $;
 
 struct StatModifier {
     String expression;
-    u32 unknown_0;
+    u32 unknown_0; // likely a downcounter indicating how many rounds this effect will last
 };
 
 struct CampaignStats {
@@ -247,13 +251,13 @@ struct Equipment {
     bool has_equipment;
     if(has_equipment) {
         String name;
-        String unknown_0;
-        s32 unknown_1;
+        String unknown_0; // set by str_aux_initialize
+        s32 unknown_1; // uses left
         s32 unknown_2;
         s32 unknown_3;
         s32 unknown_4;
         u8 unknown_5;
-        u8 unknown_6;
+        u8 unknown_6; // possibly times taken on adventure?
     }
 };
 
@@ -284,18 +288,16 @@ s64 birthday @ $;
 // Only logged when cats die in the house, and not the field
 s64 deathday_house @ $;
 
-// some byte array
+// some byte array, possibly related to house boss kills
 Vector<u64, u8> unknown_17 @ $;
 
-// possibly some senility indicator
+// possibly some senility indicator, 2 for senile?
 u32 unknown_19 @ $;
 
-// don't know, todo
-u64 unknown_20 @ $;
+u64 unknown_20 @ $; // changes whenever a cat enters a new zone in the campaign
 
-// lol don't know
 u8 unknown_21 @ $;
-u8 unknown_22 @ $;
+u8 unknown_22 @ $; // changes whenever a cat enters a new zone in the campaign
 u8 unknown_23 @ $;
 
 // Fixed-sized array with indices corresponding to entries in injuries.gon
