@@ -4,6 +4,7 @@
 #include "types/msvc.hpp"
 #include "types/sqlite3.hpp"
 #include "types/phmap.hpp"
+#include "types/gon.hpp"
 
 #include <cstdint>
 #include <string>
@@ -317,9 +318,11 @@ struct CatStats {
 static_assert(sizeof(CatStats) == 0x1c);
 
 struct StatModifier {
-    MsvcReleaseModeXString expression;
-    int32_t unknown_0;
+    GonObject expression;
+    int32_t battles_remaining;
 };
+// assure that we don't break CampaignStats field alignment
+static_assert(sizeof(StatModifier) == 0xB8);
 
 struct CampaignStats {
     int32_t hp;

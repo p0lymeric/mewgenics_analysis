@@ -192,10 +192,11 @@ void show_data_explorer_window() {
                 // the game appears to lazy-query cats as needed to view loved/hated cat names and family tree portraits
                 auto &cats = p_md->cats->cats;
                 ImguiTextStdFmt("Size: {}", cats._Mysize);
-                if(ImGui::BeginTable("table1", 3)) {
+                if(ImGui::BeginTable("table1", 4)) {
                     ImGui::TableSetupColumn("Cat", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                     ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 3.0f);
                     ImGui::TableSetupColumn("Symbol", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+                    ImGui::TableSetupColumn("p_CatData", ImGuiTableColumnFlags_WidthStretch, 2.0f);
                     ImGui::TableHeadersRow();
                     auto head = cats._Myhead;
                     auto current = head->_Next;
@@ -208,6 +209,8 @@ void show_data_explorer_window() {
                         ImguiTextStdFmt("{}", convert_utf16_wstring_to_utf8_string(cat.name));
                         ImGui::TableNextColumn();
                         ImguiTextStdFmt("{}", cat.nameplate_symbol);
+                        ImGui::TableNextColumn();
+                        ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(&cat));
                         current = current->_Next;
                     }
                     ImGui::EndTable();
@@ -378,6 +381,7 @@ void show_feline_therapist_window() {
                 while(current != head) {
                     auto &cat = *current->_Myval.cat;
                     if(ImGui::TreeNode(std::format("{} ({})", convert_utf16_wstring_to_utf8_string(cat.name), current->_Myval.sql_key).c_str())) {
+                        ImguiTextStdFmt("p_CatData: {:p}", reinterpret_cast<void *>(&cat));
                         ImguiTextStdFmt("Nameplate symbol: {}", cat.nameplate_symbol);
                         ImguiTextStdFmt("Entropy: 0x{:x}", cat.entropy);
                         ImguiTextStdFmt("Sex: {} {}", cat.sex, cat.sex_dup);
@@ -478,6 +482,23 @@ void show_feline_therapist_window() {
                         ImguiTextStdFmt("Dead: {}", cat.campaign_stats.dead);
                         ImguiTextStdFmt("CampaignStats.unknown_0: {}", cat.campaign_stats.unknown_0);
                         ImguiTextStdFmt("CampaignStats.unknown_1: {}", cat.campaign_stats.unknown_1);
+                        ImguiTextStdFmt("Event Stat Modifiers");
+                        if(ImGui::BeginTable("event_stat_modifiers_table", 3)) {
+                            ImGui::TableSetupColumn("pointer", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+                            ImGui::TableSetupColumn("Expression", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                            ImGui::TableSetupColumn("Battles remaining", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+                            ImGui::TableHeadersRow();
+                            for(auto p_mod = cat.campaign_stats.event_stat_modifiers._Myfirst; p_mod < cat.campaign_stats.event_stat_modifiers._Mylast; p_mod++) {
+                                ImGui::TableNextRow();
+                                ImGui::TableNextColumn();
+                                ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(p_mod));
+                                ImGui::TableNextColumn();
+                                ImguiTextStdFmt("{}", p_mod->expression.SaveToStr(true));
+                                ImGui::TableNextColumn();
+                                ImguiTextStdFmt("{}", p_mod->battles_remaining);
+                            }
+                            ImGui::EndTable();
+                        }
                         for(int i = 0; i < 2; i++) {
                             auto p_base = cat.actives_basic;
                             ImguiTextStdFmt("Basic {}: {}", i, p_base[i]);

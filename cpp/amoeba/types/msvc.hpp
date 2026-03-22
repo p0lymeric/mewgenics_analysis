@@ -203,12 +203,16 @@ struct MsvcReleaseModeVector {
     MsvcReleaseModeVector(const MsvcReleaseModeVector&) = delete;
     MsvcReleaseModeVector& operator=(const MsvcReleaseModeVector&) = delete;
 
-    size_t size() {
+    size_t size() const {
         return this->_Mylast - this->_Myfirst;
     }
 
-    size_t capacity() {
+    size_t capacity() const {
         return this->_Myend - this->_Myfirst;
+    }
+
+    const _Value_type& operator[](size_t idx) const {
+        return _Myfirst[idx];
     }
 
     _Value_type& operator[](size_t idx) {
