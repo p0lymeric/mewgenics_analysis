@@ -3,6 +3,7 @@
 #include "utilities/debug_console.hpp"
 #include "utilities/function_hook.hpp"
 #include "utilities/strings.hpp"
+#include "utilities/memory.hpp"
 
 #include "SDL3/SDL.h"
 #include "imgui.h"
@@ -187,18 +188,32 @@ void show_data_explorer_window() {
             ImGui::TreePop();
         }
 
+        if(ImGui::TreeNode("Thread-local storage")) {
+            auto *p_tls = get_tls0_base<LAYOUT_TLS_Slot0>();
+            ImguiTextStdFmt("TLS base: {:p}", reinterpret_cast<void *>(p_tls));
+            for(int i = 0; i < 4; i++) {
+                ImguiTextStdFmt("RNG context {}: 0x{:x}", i, p_tls->xoshiro256p_rng_context[i]);
+            }
+            ImGui::TreePop();
+        }
+
         if(ImGui::TreeNode("Loaded cats")) {
             if(p_md != nullptr) {
+                // if(ImGui::Button("Load cat 1")) {
+                //     using FP = CatData *(*)(CatDatabase *thiss, int32_t sql_key);
+                //     auto fp = *reinterpret_cast<FP>(ADDRESS_glaiel__CatDatabase__UnkCachingLoad + G.host_exec_base_va);
+                //     fp(p_md->cats, 1);
+                // }
                 // the game appears to lazy-query cats as needed to view loved/hated cat names and family tree portraits
                 auto &cats = p_md->cats->cats;
-                ImguiTextStdFmt("Size: {}", cats._Mysize);
+                ImguiTextStdFmt("Size: {}", cats._List._Mysize);
                 if(ImGui::BeginTable("table1", 4)) {
                     ImGui::TableSetupColumn("Cat", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                     ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 3.0f);
                     ImGui::TableSetupColumn("Symbol", ImGuiTableColumnFlags_WidthStretch, 2.0f);
                     ImGui::TableSetupColumn("p_CatData", ImGuiTableColumnFlags_WidthStretch, 2.0f);
                     ImGui::TableHeadersRow();
-                    auto head = cats._Myhead;
+                    auto head = cats._List._Myhead;
                     auto current = head->_Next;
                     while(current != head) {
                         auto &cat = *current->_Myval.cat;
@@ -215,6 +230,31 @@ void show_data_explorer_window() {
                     }
                     ImGui::EndTable();
                 }
+                if(ImGui::TreeNode("Show hash map details")) {
+                    ImguiTextStdFmt("_Max_bucket_size: {:f}", cats._Max_bucket_size);
+                    ImguiTextStdFmt("_Mask: 0x{:x}", cats._Mask);
+                    ImguiTextStdFmt("_Maxidx: 0x{:x}", cats._Maxidx);
+                    ImguiTextStdFmt("_Unchecked_end: {:p}", reinterpret_cast<void *>(cats._List._Myhead));
+                    if(ImGui::BeginTable("table1", 3)) {
+                        ImGui::TableSetupColumn("Bucket", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                        ImGui::TableSetupColumn("Start (incl)", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+                        ImGui::TableSetupColumn("End (incl)", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+                        ImGui::TableHeadersRow();
+                        size_t i = 0;
+                        for(auto p_bucket = cats._Vec._Myfirst; p_bucket < cats._Vec._Mylast; p_bucket++) {
+                            ImGui::TableNextRow();
+                            ImGui::TableNextColumn();
+                            ImguiTextStdFmt("{:02x}", i);
+                            ImGui::TableNextColumn();
+                            ImguiTextStdFmt("{}", reinterpret_cast<void *>(p_bucket->first));
+                            ImGui::TableNextColumn();
+                            ImguiTextStdFmt("{}", reinterpret_cast<void *>(p_bucket->last));
+                            i++;
+                        }
+                        ImGui::EndTable();
+                    }
+                    ImGui::TreePop();
+                }
             }
             ImGui::TreePop();
         }
@@ -224,11 +264,11 @@ void show_data_explorer_window() {
                 // the game appears to delete kittens and strays if they are discarded on their first day at the house
                 // (unsure what happens with donations, or discarding a cat met on an adventure)
                 auto &cats = p_md->cats->cats_to_delete;
-                ImguiTextStdFmt("Size: {}", cats._Mysize);
+                ImguiTextStdFmt("Size: {}", cats._List._Mysize);
                 if(ImGui::BeginTable("table1", 1)) {
                     ImGui::TableSetupColumn("Cat", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                     ImGui::TableHeadersRow();
-                    auto head = cats._Myhead;
+                    auto head = cats._List._Myhead;
                     auto current = head->_Next;
                     while(current != head) {
                         ImGui::TableNextRow();
@@ -237,6 +277,31 @@ void show_data_explorer_window() {
                         current = current->_Next;
                     }
                     ImGui::EndTable();
+                }
+                if(ImGui::TreeNode("Show hash map details")) {
+                    ImguiTextStdFmt("_Max_bucket_size: {:f}", cats._Max_bucket_size);
+                    ImguiTextStdFmt("_Mask: 0x{:x}", cats._Mask);
+                    ImguiTextStdFmt("_Maxidx: 0x{:x}", cats._Maxidx);
+                    ImguiTextStdFmt("_Unchecked_end: {:p}", reinterpret_cast<void *>(cats._List._Myhead));
+                    if(ImGui::BeginTable("table1", 3)) {
+                        ImGui::TableSetupColumn("Bucket", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                        ImGui::TableSetupColumn("Start (incl)", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+                        ImGui::TableSetupColumn("End (incl)", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+                        ImGui::TableHeadersRow();
+                        size_t i = 0;
+                        for(auto p_bucket = cats._Vec._Myfirst; p_bucket < cats._Vec._Mylast; p_bucket++) {
+                            ImGui::TableNextRow();
+                            ImGui::TableNextColumn();
+                            ImguiTextStdFmt("{:02x}", i);
+                            ImGui::TableNextColumn();
+                            ImguiTextStdFmt("{}", reinterpret_cast<void *>(p_bucket->first));
+                            ImGui::TableNextColumn();
+                            ImguiTextStdFmt("{}", reinterpret_cast<void *>(p_bucket->last));
+                            i++;
+                        }
+                        ImGui::EndTable();
+                    }
+                    ImGui::TreePop();
                 }
             }
             ImGui::TreePop();
@@ -376,7 +441,7 @@ void show_feline_therapist_window() {
             MewDirector *p_md = *reinterpret_cast<MewDirector **>(ADDRESS_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
             if(p_md != nullptr) {
                 CatDatabase *p_cdb = p_md->cats;
-                auto head = p_cdb->cats._Myhead;
+                auto head = p_cdb->cats._List._Myhead;
                 auto current = head->_Next;
                 while(current != head) {
                     auto &cat = *current->_Myval.cat;

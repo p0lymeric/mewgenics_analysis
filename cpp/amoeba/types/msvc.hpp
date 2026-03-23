@@ -219,3 +219,27 @@ struct MsvcReleaseModeVector {
         return _Myfirst[idx];
     }
 };
+
+// MSVC XHash (std::unordered_map etc.), laid out as compiled in Release mode
+// https://github.com/microsoft/STL/blob/2626cf1ee9d26be701b9bdbd2fb30db240456456/stl/inc/xhash
+template<class _Value_type>
+struct MsvcReleaseModeXHashIterPair {
+    _Value_type *first;
+    _Value_type *last;
+};
+template<class _Value_type>
+struct MsvcReleaseModeXHash {
+     // Assume _Traitsobj only contains _Max_bucket_size for now.
+    float _Max_bucket_size;
+    uint32_t _Traitsobj_padding;
+    MsvcReleaseModeList<_Value_type> _List;
+    // actually a _Hash_vec, but is otherwise what we expect
+    MsvcReleaseModeVector<MsvcReleaseModeXHashIterPair<_Value_type>> _Vec;
+    // _Mask is always _Maxidx-1 to leverage power of two constraint
+    size_t _Mask; // the key mask
+    size_t _Maxidx; // current maximum key value, must be a power of 2
+
+    // delete the copy constructor to block implicit copying
+    MsvcReleaseModeXHash(const MsvcReleaseModeXHash&) = delete;
+    MsvcReleaseModeXHash& operator=(const MsvcReleaseModeXHash&) = delete;
+};

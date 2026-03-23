@@ -21,3 +21,9 @@ bool jf_read(const void *addr, T *buf) {
 //     ReadProcessMemory(GetCurrentProcess(), addr, buf, sizeof(T), &bytes_read);
 //     return bytes_read;
 // }
+
+// Gets the base pointer for thread-local-storage slot 0.
+template<typename T>
+T *get_tls0_base() {
+    return reinterpret_cast<T **>(__readgsqword(0x58))[0];
+}

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "types/msvc.hpp"
+#include "types/phmap.hpp"
 
 #include <vector>
 
@@ -22,6 +23,22 @@ static_assert(true); // makes clangd happy by ending preamble section
 #endif
 
 struct GonObject {
+    struct StringHasher {
+        static uint64_t hash(MsvcReleaseModeXString *key) {
+            // TODO
+            (void)key;
+            __debugbreak();
+            return 0;
+        }
+        static bool identical(MsvcReleaseModeXString *key1, MsvcReleaseModeXString *key2) {
+            // TODO
+            (void)key1;
+            (void)key2;
+            __debugbreak();
+            return false;
+        }
+    };
+
     enum class FieldType : int {
         NULLGON,
         STRING,
@@ -31,8 +48,7 @@ struct GonObject {
         BOOL
     };
 
-    // thank goodness, string serialization does not depend on the unordered_map...
-    /*std::unordered_map<std::string, int>*/ char children_map[56];
+    PhmapFlatHashSap<MsvcReleaseModeXString, int, StringHasher> children_map;
     MsvcReleaseModeVector<GonObject> children_array;
     int int_data;
     double float_data;

@@ -487,12 +487,9 @@ struct CatDatabase {
     void *vtable;
     char _8[0x30];
     Pedigree pedigree;
-    char _e0[0x10];
-    MsvcReleaseModeList<SqlKeyCatDataPair> cats;
-    char _100[0x28];
-    char _128[8];
-    MsvcReleaseModeList<int64_t> cats_to_delete;
-    char _140[0x28];
+    void *mewsavefile;
+    MsvcReleaseModeXHash<SqlKeyCatDataPair> cats;
+    MsvcReleaseModeXHash<int64_t> cats_to_delete;
     MsvcReleaseModeVector<MsvcReleaseModeXWString> name_gen_history_w;
     // likely more stuff...
 };
