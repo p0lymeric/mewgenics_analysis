@@ -2,7 +2,6 @@
 #include "utilities/memory.hpp"
 
 #include "types/msvc.hpp"
-#include "types/sqlite3.hpp"
 #include "types/phmap.hpp"
 #include "types/gon.hpp"
 
@@ -15,8 +14,9 @@
 // polymeric 2026
 
 // overall size is not correct, we only care about file_path
+typedef struct host_sqlite3 host_sqlite3;
 struct SQLSaveFile {
-    sqlite3 *maybe_sqlite3_hdl;
+    host_sqlite3 *conn;
     MsvcReleaseModeXString file_path;
     // ... likely more ...
 };
@@ -516,13 +516,37 @@ struct MewDirector {
     char _400[0x40];
     char _440[0x40];
     char _480[0x28];
-    char _4a8[0x18];
-    char _4c0[0x40];
+    SQLSaveFile sqlsavefile;
+    char _4d0[0x30];
     char _500[0x40];
-    char _540[0x40];
+    char _540[4];
+    char _544[0x3c];
     char _580[8];
     char _588[8];
     char _590[8];
     CatDatabase* cats;
     // likely a LOT more stuff...
 };
+static_assert(offsetof(MewDirector, sqlsavefile) == 1192);
+static_assert(offsetof(MewDirector, cats) == 1432);
+
+struct ByteStream {
+    int32_t direction_0_des_buffer_1_ser_buffer_2_ser_ostream;
+    char _4[4];
+    int32_t ser_buffer_capacity;
+    int32_t ser_buffer_size;
+    void* ser_buffer;
+    void* des_buffer;
+    bool des_buffer_needs_free;
+    char _21[3];
+    int32_t des_buffer_size;
+    int32_t des_buffer_read_cursor;
+    int32_t ser_buffer_write_cursor;
+    char ser_ofstream[0x108];
+    int32_t either_platform_or_stream_endianness;
+    int32_t either_stream_or_platform_endianness;
+    int32_t maximum_auto_endian_swap_size;
+    char _144[4];
+    MsvcReleaseModeVector<MsvcReleaseModeXString>* string_intern_table;
+};
+static_assert(sizeof(ByteStream) == 0x150);

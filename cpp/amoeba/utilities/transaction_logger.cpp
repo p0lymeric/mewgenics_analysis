@@ -41,11 +41,11 @@ void TransactionLogger::close() {
         write_footer();
 
         if(this->format == 1) {
-            this->compress_buffer.clear();
+            std::vector<char>().swap(compress_buffer);
             // nullptr check is internal to the library function
             LZ4F_freeCompressionContext(this->lz4_cctx);
         }
-        this->stream_buffer.clear();
+        std::vector<char>().swap(stream_buffer);
 
         this->file.close();
     }

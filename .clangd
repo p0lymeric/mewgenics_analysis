@@ -10,6 +10,7 @@ CompileFlags:
         - -Icpp/lib/imgui
         - -Icpp/lib/imgui/backends
         - -Icpp/lib/SDL/include
+        - -Icpp/lib/sqlite3/third_party/sqlite-amalgamation-3380500
 
 Diagnostics:
     Includes:

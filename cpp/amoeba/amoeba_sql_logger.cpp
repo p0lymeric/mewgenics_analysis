@@ -4,6 +4,7 @@
 // #include "utilities/msvcfunc_interceptor.hpp"
 #include "types/msvc.hpp"
 #include "types/glaiel.hpp"
+#include "utilities/strings.hpp"
 
 #include <set>
 #include <string>
@@ -51,7 +52,7 @@ void write_db_to_log(std::string file_path) {
         // relative to Windows FILETIME epoch
         G.tlogger->write_int64(mtime + 11644473600000000);
     }
-    G.tlogger->write_string(std::filesystem::path(file_path).filename().string());
+    G.tlogger->write_string(convert_filesystem_path_to_utf8_string(std::filesystem::path(file_path).filename()));
     G.tlogger->write_blob_from_file(file_path);
 }
 
@@ -59,7 +60,7 @@ void write_sql_to_log(std::string query, PodBufferPreallocated<SqlParam, 4> *par
     G.tlogger->select_vsid(TlogVsid::Sql);
     G.tlogger->set_timestamp_now();
     if constexpr(TLOG_SCHEMA_VERSION_HINT > 0) {
-        G.tlogger->write_string(std::filesystem::path(file_path).filename().string());
+        G.tlogger->write_string(convert_filesystem_path_to_utf8_string(std::filesystem::path(file_path).filename()));
     }
     G.tlogger->write_int64(params->size);
     G.tlogger->write_string(query);
@@ -96,7 +97,7 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__BeginSave,
     SQLSaveFile* thiss
 ) {
     if(P.save_scope_counter == 0) {
-        D::info("BEGIN TRANSACTION will be issued - {}\n", std::filesystem::path(thiss->file_path.copy_to_native_string()).filename().string());
+        D::info("BEGIN TRANSACTION will be issued - {}\n", convert_filesystem_path_to_utf8_string(std::filesystem::path(thiss->file_path.as_native_string_view()).filename()));
         P.save_scope_counter++;
     } else {
         P.save_scope_counter++;
@@ -112,7 +113,7 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__EndSave,
     glaiel__SQLSaveFile__EndSave_hook.orig(thiss);
 
     if(P.save_scope_counter == 1) {
-        D::info("COMMIT was issued - {}\n", std::filesystem::path(thiss->file_path.copy_to_native_string()).filename().string());
+        D::info("COMMIT was issued - {}\n", convert_filesystem_path_to_utf8_string(std::filesystem::path(thiss->file_path.as_native_string_view()).filename()));
         write_db_to_log(thiss->file_path);
         P.save_scope_counter--;
     } else if (P.save_scope_counter == 0) {

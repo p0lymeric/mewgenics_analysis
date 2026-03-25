@@ -48,12 +48,16 @@ struct MsvcReleaseModeXString {
         return std::string(this->begin(), this->end());
     }
 
+    std::string_view as_native_string_view() const {
+        return std::string_view(this->begin(), this->_Mysize);
+    }
+
     operator std::string() const {
         return this->copy_to_native_string();
     }
 
     operator std::string_view() const {
-        return std::string_view(this->begin(), this->_Mysize);
+        return this->as_native_string_view();
     }
 };
 template<>
@@ -95,12 +99,16 @@ struct MsvcReleaseModeXWString {
         return std::wstring(this->begin(), this->end());
     }
 
+    std::wstring_view as_native_wstring_view() const {
+        return std::wstring_view(this->begin(), this->_Mysize);
+    }
+
     operator std::wstring() const {
         return this->copy_to_native_wstring();
     }
 
     operator std::wstring_view() const {
-        return std::wstring_view(this->begin(), this->_Mysize);
+        return this->as_native_wstring_view();
     }
 };
 template<>

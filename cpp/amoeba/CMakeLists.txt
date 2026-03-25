@@ -24,6 +24,7 @@ add_library(${HOOK_NAME} SHARED
     amoeba_sql_logger.cpp
     amoeba_imgui.cpp
     utilities/transaction_logger.cpp
+    utilities/sqlite3_conn_wrapper.cpp
 )
 
 target_include_directories(${HOOK_NAME} PUBLIC
@@ -50,6 +51,7 @@ target_link_libraries(${HOOK_NAME} PRIVATE
     SDL3::Headers
     # Instead of building SDL3, we use exported symbols from the exe (Mewgenics_exports) instead
     Mewgenics_exports
+    sqlite3
 )
 
 install(TARGETS ${TARGET_NAME} ${HOOK_NAME} RUNTIME DESTINATION bin)

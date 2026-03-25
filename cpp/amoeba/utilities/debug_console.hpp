@@ -52,7 +52,7 @@ public:
     }
 
     void resize(size_t new_capacity) {
-        this->clear();
+        std::vector<T>().swap(this->buf);
         this->buf.resize(new_capacity);
         this->cap = new_capacity;
     }
