@@ -20,20 +20,20 @@ extern GlobalContext G;
 inline constexpr uint64_t TLOG_SCHEMA_VERSION_HINT = 1;
 
 // These addresses were extracted from Mewgenics.exe
-// They are encoded as relative VAs
 // Mewgenics 1.0.20870 (SHA-256 969294038979e15f1b6638ea795f9687952c62858e3f98d355f418b0f5e2f814)
+// Image offsets are encoded as relative VAs
 inline constexpr uintptr_t ADDRESS_glaiel__SQLSaveFile__BeginSave = 0xa03bd0;
 inline constexpr uintptr_t ADDRESS_glaiel__SQLSaveFile__EndSave = 0xa03c70;
 inline constexpr uintptr_t ADDRESS_glaiel__SQLSaveFile__SQL = 0xa03000;
 inline constexpr uintptr_t ADDRESS_glaiel__SerializeCatData = 0x22cea0;
 inline constexpr uintptr_t ADDRESS_glaiel__CatData_ctor = 0x05dbf0;
 inline constexpr uintptr_t ADDRESS_glaiel__CatData_dtor = 0x05db70;
+inline constexpr uintptr_t ADDRESS_glaiel__CatData_unk_init = 0x0b50e0;
+inline constexpr uintptr_t ADDRESS_glaiel__CatData_unk_init_bodyparts = 0x73ebc0;
+inline constexpr uintptr_t ADDRESS_glaiel__CatData_breed = 0x0a6610;
 inline constexpr uintptr_t ADDRESS_glaiel__MewDirector__p_singleton = 0x13ce230;
-struct LAYOUT_TLS_Slot0 {
-    char unknown_0[0x178];
-    // Game RNG context is stored in thread-local storage
-    uint64_t xoshiro256p_rng_context[4];
-};
+// TLS variable offsets are encoded relative to the base VA of their TLS slot
+inline constexpr uintptr_t TLS0OFF_xoshiro256p_rng_context = 0x178;
 
 // Call to deinitialize imgui
 // Exporter: amoeba_imgui.cpp

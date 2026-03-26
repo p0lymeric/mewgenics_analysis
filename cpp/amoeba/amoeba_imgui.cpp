@@ -11,8 +11,8 @@
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
 
-#include <filesystem>
 #include <unordered_map>
+#include <filesystem>
 
 // Cat therapy? Sign me up!
 //
@@ -26,6 +26,8 @@ struct ImguiPrivateState {
     bool request_dll_eject = false;
 
     bool hide_all = false;
+    bool enable_experimental_widgets = false;
+
     bool show_feline_therapist = false;
     bool show_data_explorer = false;
     bool show_save_explorer = false;
@@ -134,6 +136,8 @@ void show_main_menu_bar() {
             if(ImGui::MenuItem("Show Feline Therapist", NULL, &P.show_feline_therapist)) {}
             if(ImGui::MenuItem("Show data explorer", NULL, &P.show_data_explorer)) {}
             if(ImGui::MenuItem("Show save explorer", NULL, &P.show_save_explorer)) {}
+            ImGui::Separator();
+            if(ImGui::MenuItem("Enable experimental widgets", NULL, &P.enable_experimental_widgets)) {}
             if(ImGui::MenuItem("Show debug console", NULL, &P.show_debug_console)) {}
             ImGui::EndMenu();
         }
@@ -422,10 +426,11 @@ void show_data_explorer_window() {
         }
 
         if(ImGui::TreeNode("Thread-local storage")) {
-            auto *p_tls = get_tls0_base<LAYOUT_TLS_Slot0>();
-            ImguiTextStdFmt("TLS base: {:p}", reinterpret_cast<void *>(p_tls));
+            auto *p_tls = get_tls0_base<char>();
+            ImguiTextStdFmt("TLS Slot 0 base VA: {:p}", reinterpret_cast<void *>(p_tls));
+            Xoshiro256pContext *p_rng = reinterpret_cast<Xoshiro256pContext *>(p_tls + TLS0OFF_xoshiro256p_rng_context);
             for(int i = 0; i < 4; i++) {
-                ImguiTextStdFmt("RNG context {}: 0x{:x}", i, p_tls->xoshiro256p_rng_context[i]);
+                ImguiTextStdFmt("RNG context {}: 0x{:x}", i, p_rng->ctx[i]);
             }
             ImGui::TreePop();
         }
@@ -708,6 +713,61 @@ void show_save_explorer_window() {
             }
             for(auto &kv: P.save_explorer_cats) {
                 show_cat_treenode(kv.first, *kv.second.get());
+            }
+            ImGui::TreePop();
+        }
+        if(P.enable_experimental_widgets && ImGui::TreeNode("[EXPERIMENTAL] Catworks")) {
+            ImguiTextStdFmt("These tools call odd bits of code from within the game's engine.");
+            ImguiTextStdFmt("Consider only playing with them in a throwaway save!");
+            static Xoshiro256pContext our_prng_state = {1, 0, 0, 0};
+            if(ImGui::TreeNode("Analysis RNG state")) {
+                if(ImGui::Button("Copy current game RNG state")) {
+                    auto *p_tls = get_tls0_base<char>();
+                    Xoshiro256pContext *p_rng = reinterpret_cast<Xoshiro256pContext *>(p_tls + TLS0OFF_xoshiro256p_rng_context);
+                    our_prng_state = *p_rng;
+                }
+                ImGui::InputScalar("RNG context 0", ImGuiDataType_U64, &our_prng_state.ctx[0], nullptr, nullptr, "%016llx");
+                ImGui::InputScalar("RNG context 1", ImGuiDataType_U64, &our_prng_state.ctx[1], nullptr, nullptr, "%016llx");
+                ImGui::InputScalar("RNG context 2", ImGuiDataType_U64, &our_prng_state.ctx[2], nullptr, nullptr, "%016llx");
+                ImGui::InputScalar("RNG context 3", ImGuiDataType_U64, &our_prng_state.ctx[3], nullptr, nullptr, "%016llx");
+                ImGui::TreePop();
+            }
+            if(ImGui::TreeNode("Stray generator")) {
+                static ManagedCatData random_cat;
+                if(ImGui::Button("Roll a stray!")) {
+                    random_cat = make_stray(&our_prng_state);
+                }
+                if(random_cat != nullptr) {
+                    show_cat_treenode(0, *random_cat.get());
+                }
+                ImGui::TreePop();
+            }
+            if(ImGui::TreeNode("Kitten generator")) {
+                ImguiTextStdFmt("To use this generator, you must first load your save's cats under the 'Cats' section.");
+                ImguiTextStdFmt("This tool will affect the name generation history in your save file!");
+                static int64_t parent_a_key;
+                static int64_t parent_b_key;
+                static double coi;
+                static ManagedCatData kitten;
+                ImGui::InputScalar("Parent A", ImGuiDataType_S64, &parent_a_key);
+                ImGui::InputScalar("Parent B", ImGuiDataType_S64, &parent_b_key);
+                ImGui::InputDouble("COI", &coi);
+                if(coi < 0.0) {
+                    coi = 0.0;
+                } else if(coi > 1.0) {
+                    coi = 1.0;
+                }
+                if(ImGui::Button("Make a kitten!")) {
+                    auto parent_a = P.save_explorer_cats.find(parent_a_key);
+                    auto parent_b = P.save_explorer_cats.find(parent_b_key);
+                    if(parent_a != P.save_explorer_cats.end() && parent_b != P.save_explorer_cats.end()) {
+                        kitten = make_kitten(parent_a->second.get(), parent_b->second.get(), coi, &our_prng_state);
+                    }
+                }
+                if(kitten != nullptr) {
+                    show_cat_treenode(0, *kitten.get());
+                }
+                ImGui::TreePop();
             }
             ImGui::TreePop();
         }

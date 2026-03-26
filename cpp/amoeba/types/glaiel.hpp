@@ -550,3 +550,7 @@ struct ByteStream {
     MsvcReleaseModeVector<MsvcReleaseModeXString>* string_intern_table;
 };
 static_assert(sizeof(ByteStream) == 0x150);
+
+struct Xoshiro256pContext {
+    uint64_t ctx[4];
+};
