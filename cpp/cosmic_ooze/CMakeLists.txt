@@ -26,6 +26,11 @@ target_include_directories(${INJECTOR_NAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+target_compile_definitions(${INJECTOR_NAME} PRIVATE
+    WIN32_LEAN_AND_MEAN
+    NOMINMAX
+)
+
 if(MSVC)
 elseif(MINGW)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
