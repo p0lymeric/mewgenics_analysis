@@ -5,6 +5,7 @@
 
 #include "transaction_logger.hpp"
 #include "utilities/strings.hpp"
+#include "utilities/ringbuffer.hpp"
 
 #include <cstdint>
 #include <string>
@@ -23,64 +24,6 @@
 #define ALLOC_CONSOLE()
 #define FREE_CONSOLE()
 #endif
-
-template<class T>
-class Ringbuffer {
-public:
-    Ringbuffer(size_t initial_capacity = 0) :
-        cap(initial_capacity), head(0), tail(0), full(false)
-    {
-        this->buf.resize(this->cap);
-    }
-
-    // Overflow policy is to overwrite the oldest entry
-    void push(const T &data) {
-        this->buf[head] = data;
-
-        this->head = (this->head + 1) % this->cap;
-        if(this->full) {
-            this->tail = this->head;
-        } else {
-            this->full = this->head == this->tail;
-        }
-    }
-
-    void clear() {
-        this->head = 0;
-        this->tail = 0;
-        this->full = false;
-    }
-
-    void resize(size_t new_capacity) {
-        std::vector<T>().swap(this->buf);
-        this->buf.resize(new_capacity);
-        this->cap = new_capacity;
-    }
-
-    size_t size() {
-        if (full) {
-            return this->cap;
-        } else if(head >= tail) {
-            return head - tail;
-        } else {
-            return this->cap - tail + head;
-        }
-    }
-
-    size_t capacity() {
-        return this->cap;
-    }
-
-    T& operator[](size_t idx) {
-        return buf[(head + this->cap - 1 - idx) % this->cap];
-    }
-private:
-    std::vector<T> buf;
-    size_t cap;
-    size_t head;
-    size_t tail;
-    bool full;
-};
 
 enum class DebugConsoleLevel : uint8_t {
     Debug = 0,

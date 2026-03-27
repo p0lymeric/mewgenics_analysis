@@ -11,7 +11,10 @@
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
 
+#include <list>
 #include <unordered_map>
+#include <utility>
+#include <algorithm>
 #include <filesystem>
 
 // Cat therapy? Sign me up!
@@ -180,226 +183,224 @@ void show_debug_console_window() {
     ImGui::End();
 }
 
-void show_cat_treenode(int64_t sql_key, CatData &cat) {
-    if(ImGui::TreeNode(std::format("{} ({})", convert_utf16_wstring_to_utf8_string(cat.name), sql_key).c_str())) {
-        ImguiTextStdFmt("p_CatData: {:p}", reinterpret_cast<void *>(&cat));
-        ImguiTextStdFmt("Nameplate symbol: {}", cat.nameplate_symbol);
-        ImguiTextStdFmt("Entropy: 0x{:x}", cat.entropy);
-        ImguiTextStdFmt("Sex: {} {}", cat.sex, cat.sex_dup);
-        ImguiTextStdFmt("Flags: 0x{:x}", cat.flags);
-        std::string flags_list = "";
-        for(int i = 63; i >= 0; i--) {
-            if((cat.flags >> i) & 1) {
-                flags_list += std::format("{} ", i);
-            }
+void show_cat(CatData &cat) {
+    ImguiTextStdFmt("p_CatData: {:p}", reinterpret_cast<void *>(&cat));
+    ImguiTextStdFmt("Name: {}", convert_utf16_wstring_to_utf8_string(cat.name));
+    ImguiTextStdFmt("Nameplate symbol: {}", cat.nameplate_symbol);
+    ImguiTextStdFmt("Entropy: 0x{:x}", cat.entropy);
+    ImguiTextStdFmt("Sex: {} {}", cat.sex, cat.sex_dup);
+    ImguiTextStdFmt("Flags: 0x{:x}", cat.flags);
+    std::string flags_list = "";
+    for(int i = 63; i >= 0; i--) {
+        if((cat.flags >> i) & 1) {
+            flags_list += std::format("{} ", i);
         }
-        ImguiTextStdFmt("Flags: {}", flags_list);
-        ImguiTextStdFmt("unknown 2/3: {} {}", cat.unknown_2, cat.unknown_3);
-        ImguiTextStdFmt("Libido: {}", cat.libido);
-        ImguiTextStdFmt("Sexuality: {}", cat.sexuality);
-        ImguiTextStdFmt("Loves: {} ({})", cat.lover_sql_key, cat.unknown_7);
-        ImguiTextStdFmt("Aggression: {}", cat.aggression);
-        ImguiTextStdFmt("Hates: {} ({})", cat.hater_sql_key, cat.unknown_9);
-        ImguiTextStdFmt("Fertility: {}", cat.fertility);
-        ImguiTextStdFmt("Texture/palettes: {} {} {}", cat.body_parts.texture_sprite_idx, cat.body_parts.heritable_palette_idx, cat.body_parts.collar_palette_idx);
-        ImguiTextStdFmt("BodyParts.unknown_0/1: {} {}", cat.body_parts.unknown_0, cat.body_parts.unknown_1);
-        ImguiTextStdFmt("BodyPartDescriptors");
-        if(ImGui::BeginTable("bodyparts_table", 6)) {
-            ImGui::TableSetupColumn("Part", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-            ImGui::TableSetupColumn("part_sprite", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableSetupColumn("texture_sprite", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableSetupColumn("unknown_0", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableSetupColumn("unknown_1", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableSetupColumn("unknown_2", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableHeadersRow();
-            BodyPartDescriptor *p_base = &cat.body_parts.body;
-            for(uint32_t i = 0; i < 14; i++) {
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                const char *label = i == 0 ? "body" :
-                                    i == 1 ? "head" :
-                                    i == 2 ? "tail" :
-                                    i == 3 ? "leg1" :
-                                    i == 4 ? "leg2" :
-                                    i == 5 ? "arm1" :
-                                    i == 6 ? "arm2" :
-                                    i == 7 ? "lefteye" :
-                                    i == 8 ? "righteye" :
-                                    i == 9 ? "lefteyebrow" :
-                                    i == 10 ? "righteyebrow" :
-                                    i == 11 ? "leftear" :
-                                    i == 12 ? "rightear" :
-                                    "mouth";
-                ImguiTextStdFmt("{}", label);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].part_sprite_idx);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].texture_sprite_idx);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].unknown_0);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].unknown_1);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].unknown_2);
-            }
-            ImGui::EndTable();
+    }
+    ImguiTextStdFmt("Flags: {}", flags_list);
+    ImguiTextStdFmt("unknown 2/3: {} {}", cat.unknown_2, cat.unknown_3);
+    ImguiTextStdFmt("Libido: {}", cat.libido);
+    ImguiTextStdFmt("Sexuality: {}", cat.sexuality);
+    ImguiTextStdFmt("Loves: {} ({})", cat.lover_sql_key, cat.unknown_7);
+    ImguiTextStdFmt("Aggression: {}", cat.aggression);
+    ImguiTextStdFmt("Hates: {} ({})", cat.hater_sql_key, cat.unknown_9);
+    ImguiTextStdFmt("Fertility: {}", cat.fertility);
+    ImguiTextStdFmt("Texture/palettes: {} {} {}", cat.body_parts.texture_sprite_idx, cat.body_parts.heritable_palette_idx, cat.body_parts.collar_palette_idx);
+    ImguiTextStdFmt("BodyParts.unknown_0/1: {} {}", cat.body_parts.unknown_0, cat.body_parts.unknown_1);
+    ImguiTextStdFmt("BodyPartDescriptors");
+    if(ImGui::BeginTable("bodyparts_table", 6)) {
+        ImGui::TableSetupColumn("Part", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("part_sprite", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("texture_sprite", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("unknown_0", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("unknown_1", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("unknown_2", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableHeadersRow();
+        BodyPartDescriptor *p_base = &cat.body_parts.body;
+        for(uint32_t i = 0; i < 14; i++) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            const char *label = i == 0 ? "body" :
+                                i == 1 ? "head" :
+                                i == 2 ? "tail" :
+                                i == 3 ? "leg1" :
+                                i == 4 ? "leg2" :
+                                i == 5 ? "arm1" :
+                                i == 6 ? "arm2" :
+                                i == 7 ? "lefteye" :
+                                i == 8 ? "righteye" :
+                                i == 9 ? "lefteyebrow" :
+                                i == 10 ? "righteyebrow" :
+                                i == 11 ? "leftear" :
+                                i == 12 ? "rightear" :
+                                "mouth";
+            ImguiTextStdFmt("{}", label);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].part_sprite_idx);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].texture_sprite_idx);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].unknown_0);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].unknown_1);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].unknown_2);
         }
-        ImguiTextStdFmt("Voice: {} ({})", cat.body_parts.voice, cat.body_parts.pitch);
-        ImguiTextStdFmt("Stats");
-        if(ImGui::BeginTable("stats_table", 8)) {
-            ImGui::TableSetupColumn("Kind", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-            ImGui::TableSetupColumn("str", ImGuiTableColumnFlags_WidthStretch, 0.3f);
-            ImGui::TableSetupColumn("dex", ImGuiTableColumnFlags_WidthStretch, 0.3f);
-            ImGui::TableSetupColumn("con", ImGuiTableColumnFlags_WidthStretch, 0.3f);
-            ImGui::TableSetupColumn("int", ImGuiTableColumnFlags_WidthStretch, 0.3f);
-            ImGui::TableSetupColumn("spd", ImGuiTableColumnFlags_WidthStretch, 0.3f);
-            ImGui::TableSetupColumn("cha", ImGuiTableColumnFlags_WidthStretch, 0.3f);
-            ImGui::TableSetupColumn("lck", ImGuiTableColumnFlags_WidthStretch, 0.3f);
-            ImGui::TableHeadersRow();
-            CatStats *p_base = &cat.stats_heritable;
-            for(uint32_t i = 0; i < 3; i++) {
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", i == 0 ? "Heritable" : i == 1 ? "Levelling/Events" : "Injuries");
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].str);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].dex);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].con);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].int_);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].spd);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].cha);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].lck);
-            }
-            ImGui::EndTable();
+        ImGui::EndTable();
+    }
+    ImguiTextStdFmt("Voice: {} ({})", cat.body_parts.voice, cat.body_parts.pitch);
+    ImguiTextStdFmt("Stats");
+    if(ImGui::BeginTable("stats_table", 8)) {
+        ImGui::TableSetupColumn("Kind", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("str", ImGuiTableColumnFlags_WidthStretch, 0.3f);
+        ImGui::TableSetupColumn("dex", ImGuiTableColumnFlags_WidthStretch, 0.3f);
+        ImGui::TableSetupColumn("con", ImGuiTableColumnFlags_WidthStretch, 0.3f);
+        ImGui::TableSetupColumn("int", ImGuiTableColumnFlags_WidthStretch, 0.3f);
+        ImGui::TableSetupColumn("spd", ImGuiTableColumnFlags_WidthStretch, 0.3f);
+        ImGui::TableSetupColumn("cha", ImGuiTableColumnFlags_WidthStretch, 0.3f);
+        ImGui::TableSetupColumn("lck", ImGuiTableColumnFlags_WidthStretch, 0.3f);
+        ImGui::TableHeadersRow();
+        CatStats *p_base = &cat.stats_heritable;
+        for(uint32_t i = 0; i < 3; i++) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", i == 0 ? "Heritable" : i == 1 ? "Levelling/Events" : "Injuries");
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].str);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].dex);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].con);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].int_);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].spd);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].cha);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].lck);
         }
-        ImguiTextStdFmt("Last debuff: {}", cat.last_injury_debuffed_stat);
-        ImguiTextStdFmt("HP: {}", cat.campaign_stats.hp);
-        ImguiTextStdFmt("Dead: {}", cat.campaign_stats.dead);
-        ImguiTextStdFmt("CampaignStats.unknown_0: {}", cat.campaign_stats.unknown_0);
-        ImguiTextStdFmt("CampaignStats.unknown_1: {}", cat.campaign_stats.unknown_1);
-        ImguiTextStdFmt("Event Stat Modifiers");
-        if(ImGui::BeginTable("event_stat_modifiers_table", 3)) {
-            ImGui::TableSetupColumn("pointer", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableSetupColumn("Expression", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-            ImGui::TableSetupColumn("Battles remaining", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableHeadersRow();
-            for(auto p_mod = cat.campaign_stats.event_stat_modifiers._Myfirst; p_mod < cat.campaign_stats.event_stat_modifiers._Mylast; p_mod++) {
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(p_mod));
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_mod->expression.SaveToStr(true));
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_mod->battles_remaining);
-            }
-            ImGui::EndTable();
+        ImGui::EndTable();
+    }
+    ImguiTextStdFmt("Last debuff: {}", cat.last_injury_debuffed_stat);
+    ImguiTextStdFmt("HP: {}", cat.campaign_stats.hp);
+    ImguiTextStdFmt("Dead: {}", cat.campaign_stats.dead);
+    ImguiTextStdFmt("CampaignStats.unknown_0: {}", cat.campaign_stats.unknown_0);
+    ImguiTextStdFmt("CampaignStats.unknown_1: {}", cat.campaign_stats.unknown_1);
+    ImguiTextStdFmt("Event Stat Modifiers");
+    if(ImGui::BeginTable("event_stat_modifiers_table", 3)) {
+        ImGui::TableSetupColumn("pointer", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("Expression", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("Battles remaining", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableHeadersRow();
+        for(auto p_mod = cat.campaign_stats.event_stat_modifiers._Myfirst; p_mod < cat.campaign_stats.event_stat_modifiers._Mylast; p_mod++) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(p_mod));
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_mod->expression.SaveToStr(true));
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_mod->battles_remaining);
         }
-        for(int i = 0; i < 2; i++) {
-            auto p_base = cat.actives_basic;
-            ImguiTextStdFmt("Basic {}: {}", i, p_base[i]);
+        ImGui::EndTable();
+    }
+    for(int i = 0; i < 2; i++) {
+        auto p_base = cat.actives_basic;
+        ImguiTextStdFmt("Basic {}: {}", i, p_base[i]);
+    }
+    for(int i = 0; i < 4; i++) {
+        auto p_base = cat.actives_accessible;
+        ImguiTextStdFmt("Active (accessible) {}: {}", i, p_base[i]);
+    }
+    for(int i = 0; i < 4; i++) {
+        auto p_base = cat.actives_inherited;
+        ImguiTextStdFmt("Active (inherited) {}: {}", i, p_base[i]);
+    }
+    ImguiTextStdFmt("Passive 0: {} {}", cat.passive_0, cat.passive_0_sidecar);
+    ImguiTextStdFmt("Passive 1: {} {}", cat.passive_1, cat.passive_1_sidecar);
+    ImguiTextStdFmt("Mutation 0: {} {}", cat.passive_2, cat.passive_2_sidecar);
+    ImguiTextStdFmt("Mutation 1: {} {}", cat.passive_3, cat.passive_3_sidecar);
+    ImguiTextStdFmt("Equipment");
+    if(ImGui::BeginTable("equipment_table", 10)) {
+        ImGui::TableSetupColumn("Thing", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("unknown_0", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("unknown_1", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("unknown_2", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("unknown_3", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("unknown_4", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("unknown_5", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("unknown_6", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableHeadersRow();
+        Equipment *p_base = &cat.head;
+        for(uint32_t i = 0; i < 5; i++) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            const char *label = i == 0 ? "head" :
+                                i == 1 ? "face" :
+                                i == 2 ? "neck" :
+                                i == 3 ? "weapon" :
+                                "trinket";
+            ImguiTextStdFmt("{}", label);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].id);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].name);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].unknown_0);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].unknown_1);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].unknown_2);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].unknown_3);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].unknown_4);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].unknown_5);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", p_base[i].unknown_6);
         }
-        for(int i = 0; i < 4; i++) {
-            auto p_base = cat.actives_accessible;
-            ImguiTextStdFmt("Active (accessible) {}: {}", i, p_base[i]);
+        ImGui::EndTable();
+    }
+    ImguiTextStdFmt("Collar: {}", cat.collar);
+    ImguiTextStdFmt("Level: {}", cat.level);
+    ImguiTextStdFmt("COI: {}", cat.coi);
+    ImguiTextStdFmt("Birthday: {}", cat.birthday); // TODO calculate days ago
+    ImguiTextStdFmt("Deathday (if died in house): {}", cat.deathday_house);
+    ImguiTextStdFmt("unknown 17");
+    ImguiTextStdFmt("unknown 17 size/capacity: {} {}", cat.unknown_17.size, cat.unknown_17.capacity);
+    if(ImGui::BeginTable("unknown_17_table", 2)) {
+        ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, 3.0f);
+        ImGui::TableHeadersRow();
+        for(uint32_t i = 0; i < cat.unknown_17.size; i++) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", i);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", cat.unknown_17.ptr[i]);
         }
-        for(int i = 0; i < 4; i++) {
-            auto p_base = cat.actives_inherited;
-            ImguiTextStdFmt("Active (inherited) {}: {}", i, p_base[i]);
+        ImGui::EndTable();
+    }
+    ImguiTextStdFmt("unknown 19: {}", cat.unknown_19);
+    ImguiTextStdFmt("unknown 20: {}", cat.unknown_20);
+    ImguiTextStdFmt("unknown 21: {}", cat.unknown_21);
+    ImguiTextStdFmt("unknown 22: {}", cat.unknown_22);
+    ImguiTextStdFmt("unknown 23: {}", cat.unknown_23);
+    ImguiTextStdFmt("Injuries");
+    if(ImGui::BeginTable("injury_table", 2)) {
+        ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("Count", ImGuiTableColumnFlags_WidthStretch, 3.0f);
+        ImGui::TableHeadersRow();
+        for(int i = 0; i < 16; i++) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", i);
+            ImGui::TableNextColumn();
+            ImguiTextStdFmt("{}", cat.injuries[i]);
         }
-        ImguiTextStdFmt("Passive 0: {} {}", cat.passive_0, cat.passive_0_sidecar);
-        ImguiTextStdFmt("Passive 1: {} {}", cat.passive_1, cat.passive_1_sidecar);
-        ImguiTextStdFmt("Mutation 0: {} {}", cat.passive_2, cat.passive_2_sidecar);
-        ImguiTextStdFmt("Mutation 1: {} {}", cat.passive_3, cat.passive_3_sidecar);
-        ImguiTextStdFmt("Equipment");
-        if(ImGui::BeginTable("equipment_table", 10)) {
-            ImGui::TableSetupColumn("Thing", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-            ImGui::TableSetupColumn("unknown_0", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableSetupColumn("unknown_1", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableSetupColumn("unknown_2", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableSetupColumn("unknown_3", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableSetupColumn("unknown_4", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableSetupColumn("unknown_5", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableSetupColumn("unknown_6", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-            ImGui::TableHeadersRow();
-            Equipment *p_base = &cat.head;
-            for(uint32_t i = 0; i < 5; i++) {
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                const char *label = i == 0 ? "head" :
-                                    i == 1 ? "face" :
-                                    i == 2 ? "neck" :
-                                    i == 3 ? "weapon" :
-                                    "trinket";
-                ImguiTextStdFmt("{}", label);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].id);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].name);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].unknown_0);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].unknown_1);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].unknown_2);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].unknown_3);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].unknown_4);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].unknown_5);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", p_base[i].unknown_6);
-            }
-            ImGui::EndTable();
-        }
-        ImguiTextStdFmt("Collar: {}", cat.collar);
-        ImguiTextStdFmt("Level: {}", cat.level);
-        ImguiTextStdFmt("COI: {}", cat.coi);
-        ImguiTextStdFmt("Birthday: {}", cat.birthday); // TODO calculate days ago
-        ImguiTextStdFmt("Deathday (if died in house): {}", cat.deathday_house);
-        ImguiTextStdFmt("unknown 17");
-        ImguiTextStdFmt("unknown 17 size/capacity: {} {}", cat.unknown_17.size, cat.unknown_17.capacity);
-        if(ImGui::BeginTable("unknown_17_table", 2)) {
-            ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, 3.0f);
-            ImGui::TableHeadersRow();
-            for(uint32_t i = 0; i < cat.unknown_17.size; i++) {
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", i);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", cat.unknown_17.ptr[i]);
-            }
-            ImGui::EndTable();
-        }
-        ImguiTextStdFmt("unknown 19: {}", cat.unknown_19);
-        ImguiTextStdFmt("unknown 20: {}", cat.unknown_20);
-        ImguiTextStdFmt("unknown 21: {}", cat.unknown_21);
-        ImguiTextStdFmt("unknown 22: {}", cat.unknown_22);
-        ImguiTextStdFmt("unknown 23: {}", cat.unknown_23);
-        ImguiTextStdFmt("Injuries");
-        if(ImGui::BeginTable("injury_table", 2)) {
-            ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-            ImGui::TableSetupColumn("Count", ImGuiTableColumnFlags_WidthStretch, 3.0f);
-            ImGui::TableHeadersRow();
-            for(int i = 0; i < 16; i++) {
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", i);
-                ImGui::TableNextColumn();
-                ImguiTextStdFmt("{}", cat.injuries[i]);
-            }
-            ImGui::EndTable();
-        }
-        ImGui::TreePop();
+        ImGui::EndTable();
     }
 }
 
@@ -673,26 +674,275 @@ void show_data_explorer_window() {
     ImGui::End();
 }
 
+std::unordered_map<int64_t, CatData *> build_unified_cat_table() {
+    // merge the two maps, taking game CatData instances over analyzer CatData, and sort by sql id
+    std::unordered_map<int64_t, CatData *> unified_cat_table;
+
+    MewDirector *p_md = *reinterpret_cast<MewDirector **>(ADDRESS_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+    if(p_md != nullptr) {
+        CatDatabase *p_cdb = p_md->cats;
+        unified_cat_table.reserve(std::max(p_cdb->cats._List._Mysize, P.save_explorer_cats.size()));
+        auto head = p_cdb->cats._List._Myhead;
+        auto current = head->_Next;
+        // copy from the game's map
+        while(current != head) {
+            unified_cat_table.try_emplace(current->_Myval.sql_key, current->_Myval.cat);
+            current = current->_Next;
+        }
+    } else {
+        unified_cat_table.reserve(P.save_explorer_cats.size());
+    }
+
+    // conCATenate* entries from the analyzer's map
+    // (we're all about amewsing puns here, frfr, no carp)
+    for(auto &kv : P.save_explorer_cats) {
+        unified_cat_table.try_emplace(kv.first, kv.second.get());
+    }
+    // *Pedancat note: technically just a meowrge now. As one may furriously note, conCATenation describes
+    // the joining of two ordered sequences, but hashmaps are intrinsically unordered. A previous revision of
+    // this function joined a list of elements to the tail of a vector, chased shortly by a sort.
+    // We apologize for any purrcieved technical slights, but not for pawwful use of language.
+
+    return unified_cat_table;
+}
+
+std::vector<SqlKeyCatDataPair> derive_picker_table(std::unordered_map<int64_t, CatData *> unified_cat_table, char *search_string, ImGuiTableSortSpecs *sortspecs) {
+    // sort and filter the unified cat table by the provided specs
+
+    size_t search_string_len = std::strlen(search_string);
+    auto filter_reject = [search_string, search_string_len](SqlKeyCatDataPair &cat) -> bool {
+        // fast abort for empty search condition
+        if(search_string_len == 0) {
+            return false;
+        }
+        // partial matching of numerals in the sql key
+        std::string key_as_string = std::to_string(cat.sql_key);
+        if(std::search(key_as_string.begin(), key_as_string.end(), search_string, search_string + search_string_len) != key_as_string.end()) {
+            return false;
+        }
+        // case-insensitive search of substrings in name
+        std::string cat_name = convert_utf16_wstring_to_utf8_string(cat.cat->name);
+        if(std::search(cat_name.begin(), cat_name.end(),
+            search_string, search_string + search_string_len,
+            [](char a, char b) { return std::tolower(a) == std::tolower(b); }
+        ) != cat_name.end()) {
+            return false;
+        }
+        return true;
+    };
+
+    // filter by search criteria
+    std::vector<SqlKeyCatDataPair> picker_table;
+    for(auto &kv : unified_cat_table) {
+        SqlKeyCatDataPair pair = {kv.first, kv.second};
+        if(!filter_reject(pair)) {
+            picker_table.push_back(pair);
+        }
+    }
+
+    // sort by the requested display specification
+    // TODO should factor the decision tree out of the lambda
+    std::sort(picker_table.begin(), picker_table.end(), [sortspecs](auto &a, auto &b) {
+        if(sortspecs != nullptr && sortspecs->SpecsCount == 1) {
+            if(sortspecs->Specs[0].ColumnIndex == 0) {
+                // ID
+                if(sortspecs->Specs[0].SortDirection == ImGuiSortDirection_Ascending) {
+                    return a.sql_key < b.sql_key;
+                } else {
+                    return a.sql_key > b.sql_key;
+                }
+            } else {
+                if(sortspecs->Specs[0].SortDirection == ImGuiSortDirection_Ascending) {
+                    return a.cat->name.as_native_wstring_view() < b.cat->name.as_native_wstring_view();
+                } else {
+                    return a.cat->name.as_native_wstring_view() > b.cat->name.as_native_wstring_view();
+                }
+            }
+        }
+        return a.sql_key < b.sql_key;
+    });
+
+    return picker_table;
+}
+
 void show_feline_therapist_window() {
     if(!P.show_feline_therapist) {
         return;
     }
+
+    static int64_t picker_table_selected_sql_id = -1;
+    static Ringbuffer<int64_t> navigation_history(64);
+
+    // TODO don't recompute this map every 1/60 second
+    std::unordered_map<int64_t, CatData *> unified_cat_table = build_unified_cat_table();
+
+    std::string navigation_cat_desc;
+    // FIXME this lookup is performed again after picker select
+    // probably should just perform this lookup once
+    if(auto selected_cat = unified_cat_table.find(picker_table_selected_sql_id); selected_cat != unified_cat_table.end()) {
+        navigation_cat_desc = std::format("{} ({})", convert_utf16_wstring_to_utf8_string(selected_cat->second->name), selected_cat->first);
+    } else {
+        navigation_cat_desc = "No selection";
+    }
+
     ImVec2 viewport_size = ImGui::GetMainViewport()->Size;
     ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
-    if(ImGui::Begin("Feline Therapist", &P.show_feline_therapist)) {
-        if(ImGui::BeginChild("Scroller", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar)) {
+    if(ImGui::Begin("Feline Therapist (Picker)", &P.show_feline_therapist)) {
+        static char searchbox_buf[256];
+        // Navigation bar
+        if(ImGui::Button("<")) {
+            auto popped = navigation_history.pop();
+            if(popped.has_value()) {
+                picker_table_selected_sql_id = popped.value();
+            }
+        }
+        ImGui::SameLine();
+        if(ImGui::Button(">")) {
+            // TODO need to implement ringbuffer history cursor
+        }
+        ImGui::SameLine();
+        if(ImGui::Button("Load all cats")) {
+            P.save_explorer_cats = load_all_cats();
+        }
+        ImGui::SameLine();
+        ImguiTextStdFmt("{}", navigation_cat_desc);
+
+        ImGui::InputTextWithHint("##searchbox", "Search", searchbox_buf, sizeof(searchbox_buf));
+        if(ImGui::BeginTable("picker_table", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_Sortable | ImGuiTableFlags_Borders)) {
+            ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_WidthFixed, 40.0f);
+            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+            ImGui::TableHeadersRow();
+
+            std::vector<SqlKeyCatDataPair> picker_table;
+            if (ImGuiTableSortSpecs* sort_specs = ImGui::TableGetSortSpecs()) {
+                // if (sort_specs->SpecsDirty) {} // TODO don't apply a list filter every 1/60 second
+                picker_table = derive_picker_table(unified_cat_table, searchbox_buf, sort_specs);
+                sort_specs->SpecsDirty = false;
+            } else {
+                picker_table = derive_picker_table(unified_cat_table, searchbox_buf, nullptr);
+            }
+            for(auto &kv : picker_table) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                if(ImGui::Selectable(std::format("{}", kv.sql_key).c_str(), picker_table_selected_sql_id == kv.sql_key, ImGuiSelectableFlags_SpanAllColumns)) {
+                    picker_table_selected_sql_id = kv.sql_key;
+                    navigation_history.push(kv.sql_key);
+                }
+                ImGui::TableNextColumn();
+                ImguiTextStdFmt("{}", convert_utf16_wstring_to_utf8_string(kv.cat->name));
+            }
+
+            ImGui::EndTable();
+        }
+    }
+    ImGui::End();
+
+    CatData *picked_cat = nullptr;
+    if(auto selected_cat = unified_cat_table.find(picker_table_selected_sql_id); selected_cat != unified_cat_table.end()) {
+        picked_cat = selected_cat->second;
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
+    if(ImGui::Begin("Feline Therapist (Inspector)", &P.show_feline_therapist)) {
+        // Navigation bar
+        if(ImGui::Button("<")) {
+            auto popped = navigation_history.pop();
+            if(popped.has_value()) {
+                picker_table_selected_sql_id = popped.value();
+            }
+        }
+        ImGui::SameLine();
+        if(ImGui::Button(">")) {
+            // TODO need to implement ringbuffer history cursor
+        }
+        ImGui::SameLine();
+        if(ImGui::Button("Load all cats")) {
+            P.save_explorer_cats = load_all_cats();
+        }
+        ImGui::SameLine();
+        ImguiTextStdFmt("{}", navigation_cat_desc);
+        if(picked_cat != nullptr) {
+            show_cat(*picked_cat);
+        }
+        ImGui::End();
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
+    if(ImGui::Begin("Feline Therapist (Relationships)", &P.show_feline_therapist)) {
+        // Navigation bar
+        if(ImGui::Button("<")) {
+            auto popped = navigation_history.pop();
+            if(popped.has_value()) {
+                picker_table_selected_sql_id = popped.value();
+            }
+        }
+        ImGui::SameLine();
+        if(ImGui::Button(">")) {
+            // TODO need to implement ringbuffer history cursor
+        }
+        ImGui::SameLine();
+        if(ImGui::Button("Load all cats")) {
+            P.save_explorer_cats = load_all_cats();
+        }
+        ImGui::SameLine();
+        ImguiTextStdFmt("{}", navigation_cat_desc);
+        if(picked_cat != nullptr) {
             MewDirector *p_md = *reinterpret_cast<MewDirector **>(ADDRESS_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
             if(p_md != nullptr) {
                 CatDatabase *p_cdb = p_md->cats;
-                auto head = p_cdb->cats._List._Myhead;
-                auto current = head->_Next;
-                while(current != head) {
-                    show_cat_treenode(current->_Myval.sql_key, *current->_Myval.cat);
-                    current = current->_Next;
+                // parents
+                // SOs (lover, rival)
+                // siblings
+                // partners
+                // children
+                if(ImGui::TreeNode("Parents")) {
+                    auto parents = p_cdb->pedigree.child_to_parents_and_coi_map.get(&picker_table_selected_sql_id);
+                    // absolutely disgusting how much code it takes to dereference a map
+                    if(auto it = unified_cat_table.find(parents->val.parent_a); it != unified_cat_table.end()) {
+                        if(ImGui::TextLink(std::format("Parent A (Dad): {} ({})", convert_utf16_wstring_to_utf8_string(it->second->name), it->first).c_str())) {
+                            picker_table_selected_sql_id = it->first;
+                            navigation_history.push(it->first);
+                        }
+                    } else {
+                        ImguiTextStdFmt("Parent A (Dad): ??? ({})", parents->val.parent_a);
+                    }
+
+                    if(auto it = unified_cat_table.find(parents->val.parent_b); it != unified_cat_table.end()) {
+                        if(ImGui::TextLink(std::format("Parent B (Mom): {} ({})", convert_utf16_wstring_to_utf8_string(it->second->name), it->first).c_str())) {
+                            picker_table_selected_sql_id = it->first;
+                            navigation_history.push(it->first);
+                        }
+                    } else {
+                        ImguiTextStdFmt("Parent B (Mom): ??? ({})", parents->val.parent_b);
+                    }
+                    ImGui::TreePop();
+                }
+                if(ImGui::TreeNode("Significant others")) {
+                    if(picked_cat != nullptr) {
+                        if(auto it = unified_cat_table.find(picked_cat->lover_sql_key); it != unified_cat_table.end()) {
+                            if(ImGui::TextLink(std::format("Lover: {} ({})", convert_utf16_wstring_to_utf8_string(it->second->name), it->first).c_str())) {
+                                picker_table_selected_sql_id = it->first;
+                                navigation_history.push(it->first);
+                            }
+                        } else {
+                            ImguiTextStdFmt("Lover: ??? ({})", picked_cat->lover_sql_key);
+                        }
+                        ImguiTextStdFmt("Lover affinity?: {}", picked_cat->unknown_7);
+
+                        if(auto it = unified_cat_table.find(picked_cat->hater_sql_key); it != unified_cat_table.end()) {
+                            if(ImGui::TextLink(std::format("Rival: {} ({})", convert_utf16_wstring_to_utf8_string(it->second->name), it->first).c_str())) {
+                                picker_table_selected_sql_id = it->first;
+                                navigation_history.push(it->first);
+                            }
+                        } else {
+                            ImguiTextStdFmt("Rival: ??? ({})", picked_cat->hater_sql_key);
+                        }
+                        ImguiTextStdFmt("Rival affinity?: {}", picked_cat->unknown_9);
+                    }
+                    ImGui::TreePop();
                 }
             }
         }
-        ImGui::EndChild();
     }
     ImGui::End();
 }
@@ -712,7 +962,10 @@ void show_save_explorer_window() {
                 std::unordered_map<int64_t, ManagedCatData>().swap(P.save_explorer_cats);
             }
             for(auto &kv: P.save_explorer_cats) {
-                show_cat_treenode(kv.first, *kv.second.get());
+                if(ImGui::TreeNode(std::format("{} ({})", convert_utf16_wstring_to_utf8_string(kv.second->name), kv.first).c_str())) {
+                    show_cat(*kv.second);
+                    ImGui::TreePop();
+                }
             }
             ImGui::TreePop();
         }
@@ -738,7 +991,10 @@ void show_save_explorer_window() {
                     random_cat = make_stray(&our_prng_state);
                 }
                 if(random_cat != nullptr) {
-                    show_cat_treenode(0, *random_cat.get());
+                    if(ImGui::TreeNode(std::format("{}", convert_utf16_wstring_to_utf8_string(random_cat->name)).c_str())) {
+                        show_cat(*random_cat);
+                        ImGui::TreePop();
+                    }
                 }
                 ImGui::TreePop();
             }
@@ -765,7 +1021,10 @@ void show_save_explorer_window() {
                     }
                 }
                 if(kitten != nullptr) {
-                    show_cat_treenode(0, *kitten.get());
+                    if(ImGui::TreeNode(std::format("{}", convert_utf16_wstring_to_utf8_string(kitten->name)).c_str())) {
+                        show_cat(*kitten);
+                        ImGui::TreePop();
+                    }
                 }
                 ImGui::TreePop();
             }

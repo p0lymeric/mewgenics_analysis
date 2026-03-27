@@ -204,7 +204,7 @@ std::unordered_map<int64_t, ManagedCatData> load_all_cats() {
 
             deserialize_into_cat(new_cat.get(), &byte_stream);
 
-            tracked_cats.emplace(sql_key, std::move(new_cat));
+            tracked_cats.try_emplace(sql_key, std::move(new_cat));
 
             return true;
         }
