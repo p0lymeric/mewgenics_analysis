@@ -74,6 +74,7 @@ public:
 
     void open();
     void close();
+    void flush();
 
     void reset(bool write_full = false);
     void select_vsid(uint32_t vsid, bool write_full = false);

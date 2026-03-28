@@ -18,6 +18,19 @@ GlobalContext G;
 
 const std::filesystem::path TLOG_FILE_LOCATION = LR"(C:\Games\test.tlog.lz4)";
 
+#ifdef __SANITIZE_ADDRESS__
+// Nice to meet you! I'm the ADDRESS-SANITIZER, your trusty memory use auditor!
+// My friends call me A-san, and you can too!~
+#include <sanitizer/asan_interface.h>
+
+void asan_error_report_callback(const char *report) {
+    D::error("{}", report);
+    if(G.tlogger != nullptr) {
+        G.tlogger->flush();
+    }
+}
+#endif
+
 bool on_attach() {
     // Actual virtual address where mapped executable begins
     uintptr_t host_exec_base_va = reinterpret_cast<uintptr_t>(GetModuleHandle(NULL));
@@ -27,7 +40,11 @@ bool on_attach() {
     G.tlogger = new TransactionLogger(TLOG_FILE_LOCATION, true);
     // open its backing file for write
     // TODO add option to enable transaction logging in imgui interface
-    // G.tlogger->open();
+    #ifdef __SANITIZE_ADDRESS__
+    __asan_set_error_report_callback(&asan_error_report_callback);
+    // always open tlogger if we have ASAN enabled as it's currently our only method for logging to disk
+    G.tlogger->open();
+    #endif
     // and write a schema hint to the meta channel
     G.tlogger->select_vsid(TlogVsid::Meta);
     G.tlogger->set_timestamp_now();
@@ -85,6 +102,12 @@ void final_rites(bool is_detach, bool terminate_process) {
     } else {
         FREE_CONSOLE();
     }
+
+    #ifdef __SANITIZE_ADDRESS__
+    // Unregister our ASAN reporting callback
+    // If we reattach, we'll re-register our callback
+    __asan_set_error_report_callback(nullptr);
+    #endif
 
     // Always finalize tlogger before exit, even if we plan to terminate the process
     D::uninstall_tlogger();

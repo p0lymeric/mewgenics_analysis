@@ -11,7 +11,9 @@
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
 
+#include <cstring>
 #include <list>
+#include <set>
 #include <unordered_map>
 #include <utility>
 #include <algorithm>
@@ -706,6 +708,44 @@ std::unordered_map<int64_t, CatData *> build_unified_cat_table() {
     return unified_cat_table;
 }
 
+struct PedigreeIndex {
+    std::unordered_map<int64_t, std::set<int64_t>> children_table;
+    std::unordered_map<int64_t, std::unordered_map<int64_t, size_t>> mate_table;
+};
+
+PedigreeIndex build_pedigree_index() {
+    MewDirector *p_md = *reinterpret_cast<MewDirector **>(ADDRESS_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+    std::unordered_map<int64_t, std::set<int64_t>> children_table;
+    std::unordered_map<int64_t, std::unordered_map<int64_t, size_t>> mate_table;
+    if(p_md != nullptr) {
+        auto &map = p_md->cats->pedigree.child_to_parents_and_coi_map;
+        for(size_t i = 0; i < map.cap; i++) {
+            if(map.ctrl[i] <= 0x7F) {
+                auto entry = map.slots[i];
+                // operations on the children table are not redundant, but we use a set anyway
+                // we intentionally do not exclude the null key (-1)
+                // stray cats and the two starter cats are children of the null cat
+                // sibling calculations should exclude treating the null cat as a valid (step)parent
+                auto &parent_a_child_set = children_table[entry.val.parent_a]; // will retrieve or create on lookup
+                parent_a_child_set.insert(entry.key);
+                auto &parent_b_child_set = children_table[entry.val.parent_b]; // will retrieve or create on lookup
+                parent_b_child_set.insert(entry.key);
+
+                // track number of children within the mate submap
+                auto &parent_a_mates = mate_table[entry.val.parent_a]; // will retrieve or create on lookup
+                auto &parent_a_cross_b_children_cnt = parent_a_mates[entry.val.parent_b]; // will retrieve or create on lookup
+                parent_a_cross_b_children_cnt++;
+                auto &parent_b_mates = mate_table[entry.val.parent_b]; // will retrieve or create on lookup
+                auto &parent_b_cross_a_children_cnt = parent_b_mates[entry.val.parent_a]; // will retrieve or create on lookup
+                parent_b_cross_a_children_cnt++;
+            }
+        }
+        // TODO iterate through all cats and create connections for links not described in the pedigree table
+        // for now, assume that the pedigree table is complete
+    }
+    return PedigreeIndex {children_table, mate_table};
+}
+
 std::vector<SqlKeyCatDataPair> derive_picker_table(std::unordered_map<int64_t, CatData *> unified_cat_table, char *search_string, ImGuiTableSortSpecs *sortspecs) {
     // sort and filter the unified cat table by the provided specs
 
@@ -770,39 +810,53 @@ void show_feline_therapist_window() {
         return;
     }
 
-    static int64_t picker_table_selected_sql_id = -1;
-    static Ringbuffer<int64_t> navigation_history(64);
+    static Ringbuffer<int64_t, true> navigation_history(64);
 
-    // TODO don't recompute this map every 1/60 second
+    int64_t picker_table_selected_sql_id = navigation_history.undo_peek().value_or(-1);
+
+    // TODO don't recompute this map every frame
     std::unordered_map<int64_t, CatData *> unified_cat_table = build_unified_cat_table();
 
     std::string navigation_cat_desc;
-    // FIXME this lookup is performed again after picker select
-    // probably should just perform this lookup once
+    CatData *picked_cat = nullptr;
     if(auto selected_cat = unified_cat_table.find(picker_table_selected_sql_id); selected_cat != unified_cat_table.end()) {
         navigation_cat_desc = std::format("{} ({})", convert_utf16_wstring_to_utf8_string(selected_cat->second->name), selected_cat->first);
+        picked_cat = selected_cat->second;
     } else {
         navigation_cat_desc = "No selection";
     }
+
+    // need to reload cats at end of fn to avoid prematurely invalidating picked_cat
+    // what we get for playing loose with unique_ptr borrows
+    bool reload_cats = false;
 
     ImVec2 viewport_size = ImGui::GetMainViewport()->Size;
     ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
     if(ImGui::Begin("Feline Therapist (Picker)", &P.show_feline_therapist)) {
         static char searchbox_buf[256];
         // Navigation bar
-        if(ImGui::Button("<")) {
-            auto popped = navigation_history.pop();
-            if(popped.has_value()) {
-                picker_table_selected_sql_id = popped.value();
+        if(navigation_history.undo_can_step_backward()) {
+            if(ImGui::Button("<")) {
+                navigation_history.undo_step_backward();
             }
+        } else {
+            ImGui::BeginDisabled();
+            ImGui::Button("<");
+            ImGui::EndDisabled();
         }
         ImGui::SameLine();
-        if(ImGui::Button(">")) {
-            // TODO need to implement ringbuffer history cursor
+        if(navigation_history.undo_can_step_forward()) {
+            if(ImGui::Button(">")) {
+                navigation_history.undo_step_forward();
+            }
+        } else {
+            ImGui::BeginDisabled();
+            ImGui::Button(">");
+            ImGui::EndDisabled();
         }
         ImGui::SameLine();
         if(ImGui::Button("Load all cats")) {
-            P.save_explorer_cats = load_all_cats();
+            reload_cats = true;
         }
         ImGui::SameLine();
         ImguiTextStdFmt("{}", navigation_cat_desc);
@@ -815,7 +869,7 @@ void show_feline_therapist_window() {
 
             std::vector<SqlKeyCatDataPair> picker_table;
             if (ImGuiTableSortSpecs* sort_specs = ImGui::TableGetSortSpecs()) {
-                // if (sort_specs->SpecsDirty) {} // TODO don't apply a list filter every 1/60 second
+                // if (sort_specs->SpecsDirty) {} // TODO don't apply a list filter every frame
                 picker_table = derive_picker_table(unified_cat_table, searchbox_buf, sort_specs);
                 sort_specs->SpecsDirty = false;
             } else {
@@ -825,8 +879,9 @@ void show_feline_therapist_window() {
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
                 if(ImGui::Selectable(std::format("{}", kv.sql_key).c_str(), picker_table_selected_sql_id == kv.sql_key, ImGuiSelectableFlags_SpanAllColumns)) {
-                    picker_table_selected_sql_id = kv.sql_key;
-                    navigation_history.push(kv.sql_key);
+                    if(picker_table_selected_sql_id != kv.sql_key) {
+                        navigation_history.push(kv.sql_key);
+                    }
                 }
                 ImGui::TableNextColumn();
                 ImguiTextStdFmt("{}", convert_utf16_wstring_to_utf8_string(kv.cat->name));
@@ -837,30 +892,35 @@ void show_feline_therapist_window() {
     }
     ImGui::End();
 
-    CatData *picked_cat = nullptr;
-    if(auto selected_cat = unified_cat_table.find(picker_table_selected_sql_id); selected_cat != unified_cat_table.end()) {
-        picked_cat = selected_cat->second;
-    }
-
     ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
     if(ImGui::Begin("Feline Therapist (Inspector)", &P.show_feline_therapist)) {
         // Navigation bar
-        if(ImGui::Button("<")) {
-            auto popped = navigation_history.pop();
-            if(popped.has_value()) {
-                picker_table_selected_sql_id = popped.value();
+        if(navigation_history.undo_can_step_backward()) {
+            if(ImGui::Button("<")) {
+                navigation_history.undo_step_backward();
             }
+        } else {
+            ImGui::BeginDisabled();
+            ImGui::Button("<");
+            ImGui::EndDisabled();
         }
         ImGui::SameLine();
-        if(ImGui::Button(">")) {
-            // TODO need to implement ringbuffer history cursor
+        if(navigation_history.undo_can_step_forward()) {
+            if(ImGui::Button(">")) {
+                navigation_history.undo_step_forward();
+            }
+        } else {
+            ImGui::BeginDisabled();
+            ImGui::Button(">");
+            ImGui::EndDisabled();
         }
         ImGui::SameLine();
         if(ImGui::Button("Load all cats")) {
-            P.save_explorer_cats = load_all_cats();
+            reload_cats = true;
         }
         ImGui::SameLine();
         ImguiTextStdFmt("{}", navigation_cat_desc);
+
         if(picked_cat != nullptr) {
             show_cat(*picked_cat);
         }
@@ -870,80 +930,134 @@ void show_feline_therapist_window() {
     ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
     if(ImGui::Begin("Feline Therapist (Relationships)", &P.show_feline_therapist)) {
         // Navigation bar
-        if(ImGui::Button("<")) {
-            auto popped = navigation_history.pop();
-            if(popped.has_value()) {
-                picker_table_selected_sql_id = popped.value();
+        if(navigation_history.undo_can_step_backward()) {
+            if(ImGui::Button("<")) {
+                navigation_history.undo_step_backward();
             }
+        } else {
+            ImGui::BeginDisabled();
+            ImGui::Button("<");
+            ImGui::EndDisabled();
         }
         ImGui::SameLine();
-        if(ImGui::Button(">")) {
-            // TODO need to implement ringbuffer history cursor
+        if(navigation_history.undo_can_step_forward()) {
+            if(ImGui::Button(">")) {
+                navigation_history.undo_step_forward();
+            }
+        } else {
+            ImGui::BeginDisabled();
+            ImGui::Button(">");
+            ImGui::EndDisabled();
         }
         ImGui::SameLine();
         if(ImGui::Button("Load all cats")) {
-            P.save_explorer_cats = load_all_cats();
+            reload_cats = true;
         }
         ImGui::SameLine();
         ImguiTextStdFmt("{}", navigation_cat_desc);
+
         if(picked_cat != nullptr) {
             MewDirector *p_md = *reinterpret_cast<MewDirector **>(ADDRESS_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
             if(p_md != nullptr) {
+                // TODO yet another all-cats operation executed every frame
+                PedigreeIndex pedigree_index = build_pedigree_index();
+
                 CatDatabase *p_cdb = p_md->cats;
-                // parents
-                // SOs (lover, rival)
-                // siblings
-                // partners
-                // children
+
                 if(ImGui::TreeNode("Parents")) {
                     auto parents = p_cdb->pedigree.child_to_parents_and_coi_map.get(&picker_table_selected_sql_id);
-                    // absolutely disgusting how much code it takes to dereference a map
-                    if(auto it = unified_cat_table.find(parents->val.parent_a); it != unified_cat_table.end()) {
-                        if(ImGui::TextLink(std::format("Parent A (Dad): {} ({})", convert_utf16_wstring_to_utf8_string(it->second->name), it->first).c_str())) {
-                            picker_table_selected_sql_id = it->first;
-                            navigation_history.push(it->first);
+                    if(parents != nullptr) {
+                        // absolutely disgusting how much code it takes to dereference a map
+                        if(auto it = unified_cat_table.find(parents->val.parent_a); it != unified_cat_table.end()) {
+                            if(ImGui::TextLink(std::format("Parent A (Dad): {} ({})", convert_utf16_wstring_to_utf8_string(it->second->name), it->first).c_str())) {
+                                if(picker_table_selected_sql_id != it->first) {
+                                    navigation_history.push(it->first);
+                                }
+                            }
+                        } else {
+                            ImguiTextStdFmt("Parent A (Dad): ??? ({})", parents->val.parent_a);
                         }
-                    } else {
-                        ImguiTextStdFmt("Parent A (Dad): ??? ({})", parents->val.parent_a);
-                    }
 
-                    if(auto it = unified_cat_table.find(parents->val.parent_b); it != unified_cat_table.end()) {
-                        if(ImGui::TextLink(std::format("Parent B (Mom): {} ({})", convert_utf16_wstring_to_utf8_string(it->second->name), it->first).c_str())) {
-                            picker_table_selected_sql_id = it->first;
-                            navigation_history.push(it->first);
+                        if(auto it = unified_cat_table.find(parents->val.parent_b); it != unified_cat_table.end()) {
+                            if(ImGui::TextLink(std::format("Parent B (Mom): {} ({})", convert_utf16_wstring_to_utf8_string(it->second->name), it->first).c_str())) {
+                                if(picker_table_selected_sql_id != it->first) {
+                                    navigation_history.push(it->first);
+                                }
+                            }
+                        } else {
+                            ImguiTextStdFmt("Parent B (Mom): ??? ({})", parents->val.parent_b);
                         }
-                    } else {
-                        ImguiTextStdFmt("Parent B (Mom): ??? ({})", parents->val.parent_b);
                     }
                     ImGui::TreePop();
                 }
                 if(ImGui::TreeNode("Significant others")) {
-                    if(picked_cat != nullptr) {
-                        if(auto it = unified_cat_table.find(picked_cat->lover_sql_key); it != unified_cat_table.end()) {
-                            if(ImGui::TextLink(std::format("Lover: {} ({})", convert_utf16_wstring_to_utf8_string(it->second->name), it->first).c_str())) {
-                                picker_table_selected_sql_id = it->first;
+                    if(auto it = unified_cat_table.find(picked_cat->lover_sql_key); it != unified_cat_table.end()) {
+                        if(ImGui::TextLink(std::format("Lover: {} ({})", convert_utf16_wstring_to_utf8_string(it->second->name), it->first).c_str())) {
+                            if(picker_table_selected_sql_id != it->first) {
                                 navigation_history.push(it->first);
                             }
-                        } else {
-                            ImguiTextStdFmt("Lover: ??? ({})", picked_cat->lover_sql_key);
                         }
-                        ImguiTextStdFmt("Lover affinity?: {}", picked_cat->unknown_7);
+                    } else {
+                        ImguiTextStdFmt("Lover: ??? ({})", picked_cat->lover_sql_key);
+                    }
+                    // ImguiTextStdFmt("Lover affinity?: {}", picked_cat->unknown_7);
 
-                        if(auto it = unified_cat_table.find(picked_cat->hater_sql_key); it != unified_cat_table.end()) {
-                            if(ImGui::TextLink(std::format("Rival: {} ({})", convert_utf16_wstring_to_utf8_string(it->second->name), it->first).c_str())) {
-                                picker_table_selected_sql_id = it->first;
+                    if(auto it = unified_cat_table.find(picked_cat->hater_sql_key); it != unified_cat_table.end()) {
+                        if(ImGui::TextLink(std::format("Rival: {} ({})", convert_utf16_wstring_to_utf8_string(it->second->name), it->first).c_str())) {
+                            if(picker_table_selected_sql_id != it->first) {
                                 navigation_history.push(it->first);
                             }
-                        } else {
-                            ImguiTextStdFmt("Rival: ??? ({})", picked_cat->hater_sql_key);
                         }
-                        ImguiTextStdFmt("Rival affinity?: {}", picked_cat->unknown_9);
+                    } else {
+                        ImguiTextStdFmt("Rival: ??? ({})", picked_cat->hater_sql_key);
+                    }
+                    // ImguiTextStdFmt("Rival affinity?: {}", picked_cat->unknown_9);
+                    ImGui::TreePop();
+                }
+                // if(ImGui::TreeNode("Siblings")) {
+                //     // and stepsiblings
+                //     ImGui::TreePop();
+                // }
+                if(ImGui::TreeNode("Mates")) {
+                    if(auto my_mates = pedigree_index.mate_table.find(picker_table_selected_sql_id); my_mates != pedigree_index.mate_table.end()) {
+                        for(auto mate : my_mates->second) {
+                            if(auto mate_catdata = unified_cat_table.find(mate.first); mate_catdata != unified_cat_table.end()) {
+                                if(ImGui::TextLink(std::format("{} ({}) - {} children", convert_utf16_wstring_to_utf8_string(mate_catdata->second->name), mate_catdata->first, mate.second).c_str())) {
+                                    if(picker_table_selected_sql_id != mate_catdata->first) {
+                                        navigation_history.push(mate_catdata->first);
+                                    }
+                                }
+                            } else {
+                                ImguiTextStdFmt("??? ({}) - {} children", mate.first, mate.second);
+                            }
+                        }
+                    }
+                    ImGui::TreePop();
+                }
+                if(ImGui::TreeNode("Children")) {
+                    if(auto my_beloved_kittens = pedigree_index.children_table.find(picker_table_selected_sql_id); my_beloved_kittens != pedigree_index.children_table.end()) {
+                        for(auto child_id : my_beloved_kittens->second) {
+                            if(auto child_catdata = unified_cat_table.find(child_id); child_catdata != unified_cat_table.end()) {
+                                if(ImGui::TextLink(std::format("{} ({})", convert_utf16_wstring_to_utf8_string(child_catdata->second->name), child_catdata->first).c_str())) {
+                                    if(picker_table_selected_sql_id != child_catdata->first) {
+                                        navigation_history.push(child_catdata->first);
+                                    }
+                                }
+                            } else {
+                                ImguiTextStdFmt("??? ({})", child_id);
+                            }
+                        }
                     }
                     ImGui::TreePop();
                 }
             }
         }
     }
+
+    if(reload_cats) {
+        P.save_explorer_cats = load_all_cats();
+    }
+
     ImGui::End();
 }
 

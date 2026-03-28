@@ -51,6 +51,21 @@ void TransactionLogger::close() {
     }
 }
 
+void TransactionLogger::flush() {
+    if(this->file.is_open()) {
+        if(this->format == 1) {
+            size_t written_size = LZ4F_flush(this->lz4_cctx, this->compress_buffer.data(), this->compress_buffer.size(), nullptr);
+            if(LZ4F_isError(written_size)) {
+                // TODO somehow signal error
+                D::error("lz4 - error - {}", LZ4F_getErrorName(written_size));
+            }
+            this->file.write(this->compress_buffer.data(), written_size);
+        }
+
+        this->file.flush();
+    }
+}
+
 void TransactionLogger::reset(bool write_full) {
     const uint32_t ctype = static_cast<uint8_t>(CompactRecordCTypes::Reset);
     this->write_compact_record(ctype, nullptr, 0, write_full);

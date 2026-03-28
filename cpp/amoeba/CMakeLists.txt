@@ -11,6 +11,23 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # possibly does nothing with MSVC; permissive- is set by std:c++20
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Notes for using ASAN:
+# 1. Successfully compiled with MSVC. Had linker errors with ClangCL.
+# 2. clang_rt.asan_dynamic-x86_64.dll is located in awkward spots:
+#        MSVC: C:\Program Files\Microsoft Visual Studio\*\Community\VC\Tools\MSVC\*\bin\Hostx64\x64\clang_rt.asan_dynamic-x86_64.dll
+#        ClangCL: C:\Program Files\Microsoft Visual Studio\*\Community\VC\Tools\Llvm\x64\lib\clang\*\lib\windows\clang_rt.asan_dynamic-x86_64.dll
+# 3. Must load clang_rt.asan_dynamic-x86_64.dll when Mewgenics.exe is launched.
+#    ASAN needs to witness all allocations in the process's life. Loading during mid-life will lead to a report and crash.
+# 4. To load amoeba and ASAN together from the start, best to use cosmic_ooze's Detours-based injection method.
+#    Place amoeba.dll, clang_rt.asan_dynamic-x86_64.dll, and cosmic_ooze.exe in the same directory as
+#    Mewgenics.exe and start Mewgenics with cosmic_ooze.exe.
+#    clang_rt.asan_dynamic-x86_64.dll will load via transitive dependency to amoeba.dll.
+# 5. amoeba.dll may still be ejected and reloaded via cosmic_ooze's LoadLibrary injection method after the initial load.
+# 6. ASAN will significantly increase Mewgenics load times and memory footprint.
+# 7. Get ready to pounce on that juicy memory bug!
+
+# add_compile_options(/fsanitize=address)
+
 if(MSVC)
     add_compile_options(/W4)
 elseif(MINGW)
