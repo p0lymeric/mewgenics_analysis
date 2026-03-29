@@ -202,9 +202,9 @@ void show_cat(CatData &cat) {
     ImguiTextStdFmt("unknown 2/3: {} {}", cat.unknown_2, cat.unknown_3);
     ImguiTextStdFmt("Libido: {}", cat.libido);
     ImguiTextStdFmt("Sexuality: {}", cat.sexuality);
-    ImguiTextStdFmt("Loves: {} ({})", cat.lover_sql_key, cat.unknown_7);
+    ImguiTextStdFmt("Loves: {} ({})", cat.lover_sql_key, cat.lover_affinity);
     ImguiTextStdFmt("Aggression: {}", cat.aggression);
-    ImguiTextStdFmt("Hates: {} ({})", cat.hater_sql_key, cat.unknown_9);
+    ImguiTextStdFmt("Hates: {} ({})", cat.hater_sql_key, cat.hater_affinity);
     ImguiTextStdFmt("Fertility: {}", cat.fertility);
     ImguiTextStdFmt("Texture/palettes: {} {} {}", cat.body_parts.texture_sprite_idx, cat.body_parts.heritable_palette_idx, cat.body_parts.collar_palette_idx);
     ImguiTextStdFmt("BodyParts.unknown_0/1: {} {}", cat.body_parts.unknown_0, cat.body_parts.unknown_1);
@@ -213,7 +213,7 @@ void show_cat(CatData &cat) {
         ImGui::TableSetupColumn("Part", ImGuiTableColumnFlags_WidthStretch, 1.0f);
         ImGui::TableSetupColumn("part_sprite", ImGuiTableColumnFlags_WidthStretch, 0.5f);
         ImGui::TableSetupColumn("texture_sprite", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-        ImGui::TableSetupColumn("unknown_0", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("scar_sprite", ImGuiTableColumnFlags_WidthStretch, 0.5f);
         ImGui::TableSetupColumn("unknown_1", ImGuiTableColumnFlags_WidthStretch, 0.5f);
         ImGui::TableSetupColumn("unknown_2", ImGuiTableColumnFlags_WidthStretch, 0.5f);
         ImGui::TableHeadersRow();
@@ -241,7 +241,7 @@ void show_cat(CatData &cat) {
             ImGui::TableNextColumn();
             ImguiTextStdFmt("{}", p_base[i].texture_sprite_idx);
             ImGui::TableNextColumn();
-            ImguiTextStdFmt("{}", p_base[i].unknown_0);
+            ImguiTextStdFmt("{}", p_base[i].scar_sprite_idx);
             ImGui::TableNextColumn();
             ImguiTextStdFmt("{}", p_base[i].unknown_1);
             ImGui::TableNextColumn();
@@ -326,13 +326,13 @@ void show_cat(CatData &cat) {
         ImGui::TableSetupColumn("Thing", ImGuiTableColumnFlags_WidthStretch, 0.5f);
         ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthStretch, 0.5f);
         ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-        ImGui::TableSetupColumn("unknown_0", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-        ImGui::TableSetupColumn("unknown_1", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("Aux", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("Uses left", ImGuiTableColumnFlags_WidthStretch, 0.5f);
         ImGui::TableSetupColumn("unknown_2", ImGuiTableColumnFlags_WidthStretch, 0.5f);
         ImGui::TableSetupColumn("unknown_3", ImGuiTableColumnFlags_WidthStretch, 0.5f);
         ImGui::TableSetupColumn("unknown_4", ImGuiTableColumnFlags_WidthStretch, 0.5f);
         ImGui::TableSetupColumn("unknown_5", ImGuiTableColumnFlags_WidthStretch, 0.5f);
-        ImGui::TableSetupColumn("unknown_6", ImGuiTableColumnFlags_WidthStretch, 0.5f);
+        ImGui::TableSetupColumn("Num adventures", ImGuiTableColumnFlags_WidthStretch, 0.5f);
         ImGui::TableHeadersRow();
         Equipment *p_base = &cat.head;
         for(uint32_t i = 0; i < 5; i++) {
@@ -349,9 +349,9 @@ void show_cat(CatData &cat) {
             ImGui::TableNextColumn();
             ImguiTextStdFmt("{}", p_base[i].name);
             ImGui::TableNextColumn();
-            ImguiTextStdFmt("{}", p_base[i].unknown_0);
+            ImguiTextStdFmt("{}", p_base[i].aux_string);
             ImGui::TableNextColumn();
-            ImguiTextStdFmt("{}", p_base[i].unknown_1);
+            ImguiTextStdFmt("{}", p_base[i].uses_left);
             ImGui::TableNextColumn();
             ImguiTextStdFmt("{}", p_base[i].unknown_2);
             ImGui::TableNextColumn();
@@ -361,7 +361,7 @@ void show_cat(CatData &cat) {
             ImGui::TableNextColumn();
             ImguiTextStdFmt("{}", p_base[i].unknown_5);
             ImGui::TableNextColumn();
-            ImguiTextStdFmt("{}", p_base[i].unknown_6);
+            ImguiTextStdFmt("{}", p_base[i].times_taken_on_adventure);
         }
         ImGui::EndTable();
     }
@@ -385,10 +385,17 @@ void show_cat(CatData &cat) {
         }
         ImGui::EndTable();
     }
-    ImguiTextStdFmt("unknown 19: {}", cat.unknown_19);
-    ImguiTextStdFmt("unknown 20: {}", cat.unknown_20);
+    ImguiTextStdFmt("Lifestage: {}", cat.lifestage);
+    ImguiTextStdFmt("Cleared zones: 0x{:x}", cat.cleared_zones);
+    std::string cleared_zones_list = "";
+    for(int i = 63; i >= 0; i--) {
+        if((cat.cleared_zones >> i) & 1) {
+            cleared_zones_list += std::format("{} ", i);
+        }
+    }
+    ImguiTextStdFmt("Cleared zones: {}", cleared_zones_list);
     ImguiTextStdFmt("unknown 21: {}", cat.unknown_21);
-    ImguiTextStdFmt("unknown 22: {}", cat.unknown_22);
+    ImguiTextStdFmt("Num visited zones: {}", cat.num_visited_zones);
     ImguiTextStdFmt("unknown 23: {}", cat.unknown_23);
     ImguiTextStdFmt("Injuries");
     if(ImGui::BeginTable("injury_table", 2)) {
@@ -924,8 +931,8 @@ void show_feline_therapist_window() {
         if(picked_cat != nullptr) {
             show_cat(*picked_cat);
         }
-        ImGui::End();
     }
+    ImGui::End();
 
     ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
     if(ImGui::Begin("Feline Therapist (Relationships)", &P.show_feline_therapist)) {
@@ -1000,7 +1007,6 @@ void show_feline_therapist_window() {
                     } else {
                         ImguiTextStdFmt("Lover: ??? ({})", picked_cat->lover_sql_key);
                     }
-                    // ImguiTextStdFmt("Lover affinity?: {}", picked_cat->unknown_7);
 
                     if(auto it = unified_cat_table.find(picked_cat->hater_sql_key); it != unified_cat_table.end()) {
                         if(ImGui::TextLink(std::format("Rival: {} ({})", convert_utf16_wstring_to_utf8_string(it->second->name), it->first).c_str())) {
@@ -1011,7 +1017,6 @@ void show_feline_therapist_window() {
                     } else {
                         ImguiTextStdFmt("Rival: ??? ({})", picked_cat->hater_sql_key);
                     }
-                    // ImguiTextStdFmt("Rival affinity?: {}", picked_cat->unknown_9);
                     ImGui::TreePop();
                 }
                 // if(ImGui::TreeNode("Siblings")) {

@@ -190,7 +190,7 @@ struct BodyPartDescriptor {
     uint32_t field_0;
     uint32_t part_sprite_idx;
     uint32_t texture_sprite_idx;
-    uint32_t unknown_0;
+    uint32_t scar_sprite_idx;
     uint32_t unknown_1;
     uint32_t unknown_2;
     char _18[0x28];
@@ -339,14 +339,14 @@ static_assert(sizeof(CampaignStats) == 0x28);
 struct Equipment {
     int64_t id; // not serialized
     MsvcReleaseModeXString name;
-    MsvcReleaseModeXString unknown_0;
-    int32_t unknown_1;
+    MsvcReleaseModeXString aux_string;
+    int32_t uses_left;
     int32_t unknown_2;
     int32_t unknown_3;
     int32_t unknown_4;
     uint8_t unknown_5;
     char _59[3];
-    uint8_t unknown_6;
+    uint8_t times_taken_on_adventure;
     char _5d[3];
 };
 // assure that we don't break CatData field alignment
@@ -389,20 +389,20 @@ struct CatData {
     double libido;
     double sexuality;
     int64_t lover_sql_key;
-    double unknown_7;
+    double lover_affinity;
     int64_t hater_sql_key;
-    double unknown_9;
+    double hater_affinity;
     double aggression;
     double fertility;
     uint64_t flags;
-    int64_t unknown_20;
+    uint64_t cleared_zones;
     uint8_t unknown_21;
-    uint8_t unknown_22;
+    uint8_t num_visited_zones;
     uint8_t unknown_23;
     char _c0b[5];
     MsvcReleaseModeXString collar;
     uint32_t level;
-    uint32_t unknown_19;
+    uint32_t lifestage;
     int64_t birthday;
     int64_t deathday_house;
     int64_t sql_key;

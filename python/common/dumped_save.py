@@ -5,13 +5,13 @@ import struct
 CatPedigree = namedtuple('CatPedigree', ['child_id', 'parent_a_id', 'parent_b_id', 'coi'])
 CatCoiMemo = namedtuple('CatCoiMemo', ['parent_a_id', 'parent_b_id', 'coi'])
 
-BodyPartDescriptor = namedtuple('BodyPartDescriptor', ['part_sprite_idx', 'texture_sprite_idx', 'unknown_0', 'unknown_1_nonzero_on_arms_and_legs', 'unknown_2'])
+BodyPartDescriptor = namedtuple('BodyPartDescriptor', ['part_sprite_idx', 'texture_sprite_idx', 'scar_sprite_idx', 'unknown_1_nonzero_on_arms_and_legs', 'unknown_2'])
 BodyParts = namedtuple('BodyParts', ['texture_sprite_idx', 'heritable_palette_idx', 'collar_palette_idx', 'body', 'head', 'tail', 'leg1', 'leg2', 'arm1', 'arm2', 'lefteye', 'righteye', 'lefteyebrow', 'righteyebrow', 'leftear', 'rightear', 'mouth', 'unknown_0', 'unknown_1', 'voice', 'pitch'])
 CatStats = namedtuple('CatStats', ['str', 'dex', 'con', 'int', 'spd', 'cha', 'lck'])
 Injuries = namedtuple('Injuries', ['broken_paw', 'torn_tendon', 'broken_rib', 'concussion', 'disfigured', 'broken_leg', 'jinxed', 'immolated', 'exsanguinated', 'poisoned', 'cursed', 'radiated', 'unused_0', 'unused_1', 'unused_2', 'unused_3'])
 CampaignStats = namedtuple('CampaignStats', ['hp', 'dead', 'unknown_0', 'unknown_1', 'event_stat_modifiers'])
 # PassiveAbility = namedtuple('PassiveAbility', ['name', 'unknown_0'])
-Equipment = namedtuple('Equipment', ['version', 'has_equipment', 'name', 'unknown_0', 'unknown_1', 'unknown_2', 'unknown_3', 'unknown_4', 'unknown_5', 'unknown_6'])
+Equipment = namedtuple('Equipment', ['version', 'has_equipment', 'name', 'aux_string', 'uses_left', 'unknown_2', 'unknown_3', 'unknown_4', 'unknown_5', 'times_taken_on_adventure'])
 Kit = namedtuple('Kit', ['head', 'face', 'neck', 'weapon', 'trinket'])
 
 # walk_ragged_array_of_length_prefixed_variable_length_structures
@@ -58,6 +58,11 @@ def parse_string(blob, initial_offset, collect_data=True):
         s = None
     offset += length
     return s, offset
+
+def bit_slice(num, left, right):
+    width = left - right + 1
+    mask = (1 << width) - 1
+    return (num >> right) & mask
 
 class Cat:
     def __init__(self, sql_key, blob, verify_assumptions=True):
@@ -148,7 +153,7 @@ class Cat:
         offset = self.unknown_2_offset_past + 20
         return struct.unpack_from(f'<q', self.blob, offset=offset)[0]
 
-    def unknown_7(self):
+    def lover_affinity(self):
         offset = self.unknown_2_offset_past + 28
         return struct.unpack_from(f'<d', self.blob, offset=offset)[0]
 
@@ -160,11 +165,11 @@ class Cat:
         offset = self.unknown_2_offset_past + 44
         return struct.unpack_from(f'<q', self.blob, offset=offset)[0]
 
-    def unknown_9(self):
+    def hater_affinity(self):
         offset = self.unknown_2_offset_past + 52
         return struct.unpack_from(f'<d', self.blob, offset=offset)[0]
 
-    def unknown_10(self):
+    def fertility(self):
         offset = self.unknown_2_offset_past + 60
         return struct.unpack_from(f'<d', self.blob, offset=offset)[0]
 
@@ -249,14 +254,14 @@ class Cat:
         offset += 5
         if has_equipment:
             name, offset = parse_string(self.blob, offset, collect_data=not calculate_offset)
-            unknown_0, offset = parse_string(self.blob, offset, collect_data=not calculate_offset)
+            aux_string, offset = parse_string(self.blob, offset, collect_data=not calculate_offset)
             if calculate_offset:
                 offset += 18
                 return None, offset
             else:
-                unknowns_1_6 = struct.unpack_from(f'<iiiibb', self.blob, offset=offset)
+                integers = struct.unpack_from(f'<iiiibb', self.blob, offset=offset)
                 offset += 18
-                return Equipment(version, has_equipment, name, unknown_0, *unknowns_1_6), offset
+                return Equipment(version, has_equipment, name, aux_string, *integers), offset
         else:
             if calculate_offset:
                 return None, offset
@@ -299,11 +304,11 @@ class Cat:
         offset = self.collar_offset_past + 28
         return w_ra_of_lpvls('<Q', '<{length}b', None, 0, self.blob, self.collar_offset_past + 28, 1)[0]
 
-    def unknown_19(self):
+    def lifestage(self):
         offset = self.unknown_17_offset_past
         return struct.unpack_from(f'<I', self.blob, offset=offset)[0]
 
-    def unknown_20(self):
+    def cleared_zones(self):
         offset = self.unknown_17_offset_past + 4
         return struct.unpack_from(f'<Q', self.blob, offset=offset)[0]
 
@@ -311,7 +316,7 @@ class Cat:
         offset = self.unknown_17_offset_past + 12
         return struct.unpack_from(f'<B', self.blob, offset=offset)[0]
 
-    def unknown_22(self):
+    def num_visited_zones(self):
         offset = self.unknown_17_offset_past + 13
         return struct.unpack_from(f'<B', self.blob, offset=offset)[0]
 
@@ -337,11 +342,11 @@ class Cat:
             'libido': self.libido(),
             'sexuality': self.sexuality(),
             'lover_sql_key': self.lover_sql_key(),
-            'unknown_7': self.unknown_7(),
+            'lover_affinity': self.lover_affinity(),
             'aggression': self.aggression(),
             'hater_sql_key': self.hater_sql_key(),
-            'unknown_9': self.unknown_9(),
-            'unknown_10': self.unknown_10(),
+            'hater_affinity': self.hater_affinity(),
+            'fertility': self.fertility(),
             'body_parts': self.body_parts(),
             'stats_heritable': self.stats_heritable(),
             'stats_delta_levelling': self.stats_delta_levelling(),
@@ -360,10 +365,10 @@ class Cat:
             'birthday': self.birthday(),
             'deathday_house': self.deathday_house(),
             'unknown_17': self.unknown_17(),
-            'unknown_19': self.unknown_19(),
-            'unknown_20': self.unknown_20(),
+            'lifestage': self.lifestage(),
+            'cleared_zones': self.cleared_zones(),
             'unknown_21': self.unknown_21(),
-            'unknown_22': self.unknown_22(),
+            'num_visited_zones': self.num_visited_zones(),
             'unknown_23': self.unknown_23(),
             'injuries': self.injuries(),
         }
@@ -383,23 +388,31 @@ class Cat:
         # Does sex ever differ from sex_dup?
         assert(self.sex() == self.sex_dup())
 
-        # TODO coverage collector on status_flags
+        # Do these bit flags ever take a nonzero value?
+        assert(bit_slice(self.status_flags(), 3, 3) == 0)
+        # assert(bit_slice(self.status_flags(), 4, 4) == 0)
+        assert(bit_slice(self.status_flags(), 7, 6) == 0)
+        assert(bit_slice(self.status_flags(), 9, 8) == 0)
+        # assert(bit_slice(self.status_flags(), 10, 10) == 0)
+        # assert(bit_slice(self.status_flags(), 18, 18) == 0)
+        assert(bit_slice(self.status_flags(), 23, 20) == 0)
+        assert(bit_slice(self.status_flags(), 63, 24) == 0)
 
         # Do unknown_2 and unknown_3 always carry a value of ('None', 1)?
         assert(self.unknown_2() == 'None')
         assert(self.unknown_3() == 1)
 
         # Does lover_sql_key == -1 => unknown_7 == 0.0?
-        assert(implies(self.lover_sql_key() == -1, self.unknown_7() == 0.0))
+        assert(implies(self.lover_sql_key() == -1, self.lover_affinity() == 0.0))
         # may not be true depending on implementation, but assert anyway
-        assert(cimplies(self.lover_sql_key() == -1, self.unknown_7() == 0.0))
+        assert(cimplies(self.lover_sql_key() == -1, self.lover_affinity() == 0.0))
 
         # Does hater_sql_key == -1 => unknown_9 == 0.0?
-        assert(implies(self.hater_sql_key() == -1, self.unknown_9() == 0.0))
+        assert(implies(self.hater_sql_key() == -1, self.hater_affinity() == 0.0))
         # may not be true depending on implementation, but assert anyway
-        assert(cimplies(self.hater_sql_key() == -1, self.unknown_9() == 0.0))
+        assert(cimplies(self.hater_sql_key() == -1, self.hater_affinity() == 0.0))
 
-        # Can these fields ever outside [3, 7]?
+        # Can birth stats ever be outside [3, 7]?
         for stat in self.stats_heritable():
             assert(stat >= 3 and stat <= 7)
 
@@ -433,6 +446,8 @@ class Cat:
         # if not cimplies(self.deathday_house() != -1, flags_dead or campaign_dead):
         #     print(self.sql_key, flags_dead, campaign_dead, self.deathday_house())
         #     assert(False)
+
+        assert(self.lifestage() in (0, 1, 2))
 
         # Do injury counts correspond to stats_delta_injuries?
         # (note the debuff amounts are specified in injuries.gon)
