@@ -428,6 +428,10 @@ struct std::formatter<ChildPedigreeV> : std::formatter<std::string_view> {
 struct ParentCOIK {
     int64_t parent_a;
     int64_t parent_b;
+    bool operator==(const ParentCOIK &other) const {
+        // game sorts keys beforehand to normalize order
+        return (this->parent_a == other.parent_a) && (this->parent_b == other.parent_b);
+    }
 };
 template<>
 struct std::formatter<ParentCOIK> : std::formatter<std::string_view> {
@@ -438,18 +442,18 @@ struct std::formatter<ParentCOIK> : std::formatter<std::string_view> {
 };
 
 struct int64_tTrivialHasher {
-    static uint64_t hash(int64_t *key) {
+    static uint64_t hash(const int64_t *key) {
         return *key;
     }
 
-    static bool identical(int64_t *key1, int64_t *key2) {
+    static bool identical(const int64_t *key1, const int64_t *key2) {
         return *key1 == *key2;
     }
 };
 
 struct ParentCOIKHasher {
     // FNV-1a usage likely comes from MSVC's generic hash implementation
-    static uint64_t hash_uint64_t_fnv1a(uint64_t key) {
+    static uint64_t hash_uint64_t_fnv1a(const uint64_t key) {
         uint64_t digest = 0xcbf29ce484222325;
         for(int i = 0; i < 8; i++) {
             uint8_t byte = static_cast<uint8_t>(key >> (8 * i));
@@ -459,13 +463,12 @@ struct ParentCOIKHasher {
         return digest;
     }
 
-    static uint64_t hash(ParentCOIK *key) {
+    static uint64_t hash(const ParentCOIK *key) {
         return hash_uint64_t_fnv1a(key->parent_a) ^ hash_uint64_t_fnv1a(key->parent_b);
     }
 
-    static bool identical(ParentCOIK *key1, ParentCOIK *key2) {
-        // game sorts keys beforehand to normalize order
-        return (key1->parent_a == key2->parent_a) && (key1->parent_b == key2->parent_b);
+    static bool identical(const ParentCOIK *key1, const ParentCOIK *key2) {
+        return *key1 == *key2;
     }
 };
 

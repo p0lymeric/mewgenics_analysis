@@ -36,8 +36,8 @@ struct PhmapCompressedPair {
 // To implement for a particular parameter K, a hasher
 // of the following form must be provided as parameter H
 // struct KHasher {
-//     static uint64_t hash(K *key) { return /**/; }
-//     static bool identical(K *key1, K *key2) { return /**/; }
+//     static uint64_t hash(const K *key) { return /**/; }
+//     static bool identical(const K *key1, const K *key2) { return /**/; }
 // };
 
 template<typename K, typename V, typename H>

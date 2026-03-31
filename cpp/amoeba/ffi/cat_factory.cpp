@@ -1,7 +1,10 @@
 #include "ffi/cat_factory.hpp"
 #include "amoeba.hpp"
 #include "utilities/debug_console.hpp"
+#include "utilities/function_hook.hpp"
 #include "utilities/sqlite3_conn_wrapper.hpp"
+
+#include <stack>
 
 #include "lz4.h"
 
@@ -213,6 +216,20 @@ std::unordered_map<int64_t, ManagedCatData> load_all_cats() {
     return tracked_cats;
 }
 
+// Hook this function so that we can suppress name history updates when we manually call the breed function
+static bool glaiel__CatData_unk_init_register_in_name_history_override = false;
+static bool glaiel__CatData_unk_init_register_in_name_history_val = false;
+MAKE_HOOK(ADDRESS_glaiel__CatData_unk_init,
+    void, __cdecl, glaiel__CatData_unk_init,
+    CatData *p_cat, void *ofstream_eliminated_by_opt, int32_t sex, bool register_in_name_history
+) {
+    bool our_register_in_name_history =
+        glaiel__CatData_unk_init_register_in_name_history_override ?
+        glaiel__CatData_unk_init_register_in_name_history_val :
+        register_in_name_history;
+    glaiel__CatData_unk_init_hook.orig(p_cat, ofstream_eliminated_by_opt, sex, our_register_in_name_history);
+}
+
 void unk_init(CatData *p_cat, int32_t sex, bool register_in_name_history) {
     using ADDRESS_glaiel__CatParts_unk_init_FP = void (__cdecl *)(CatData *p_cat, void *ofstream_eliminated_by_opt, int32_t sex, bool register_in_name_history);
     ADDRESS_glaiel__CatParts_unk_init_FP ADDRESS_glaiel__CatParts_unk_init_fp = *reinterpret_cast<ADDRESS_glaiel__CatParts_unk_init_FP>(ADDRESS_glaiel__CatData_unk_init + G.host_exec_base_va);
@@ -252,6 +269,123 @@ ManagedCatData make_stray(Xoshiro256pContext *rng_override) {
     return cat;
 }
 
+struct ParentCOINativeHasher {
+    size_t operator()(const ParentCOIK &self) const noexcept {
+        // NOT the same as the game's internal hash implementation
+        // return ParentCOIKHasher::hash(&self);
+
+        // Slightly improved (FNV1a_64(a concat b)) over the game's implementation (FNV1a_64(a) ^ FNV1a_64(b)),
+        // as the parent_a == parent_b case used by self-kinship calculations does not universally map to hash 0
+        uint64_t digest = 0xcbf29ce484222325;
+        for(int i = 0; i < 8; i++) {
+            uint8_t byte = static_cast<uint8_t>(self.parent_a >> (8 * i));
+            digest ^= byte;
+            digest *= 0x100000001b3;
+        }
+        for(int i = 0; i < 8; i++) {
+            uint8_t byte = static_cast<uint8_t>(self.parent_b >> (8 * i));
+            digest ^= byte;
+            digest *= 0x100000001b3;
+        }
+        return digest;
+    }
+};
+
+double calculate_coi(int64_t parent_a_key, int64_t parent_b_key) {
+    MewDirector *p_md = *reinterpret_cast<MewDirector **>(ADDRESS_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+    if(p_md == nullptr) {
+        return 0.0;
+    }
+
+    // We use as much of the game's precomputed information as reasonable
+    // (i.e. we'll look through its pedigree and memo map and opportunistically use any memoized numbers)
+    // but we do reimplement the main body of the algorithm to avoid mutating the game's memo map
+    auto &pedigree_map = p_md->cats->pedigree.child_to_parents_and_coi_map;
+    auto &memo_map = p_md->cats->pedigree.parents_to_coi_memo_map;
+
+    // This is our augmentation to the game's memo_map
+    // We don't save it to avoid needing to invalidate entries between save reloads
+    std::unordered_map<ParentCOIK, double, ParentCOINativeHasher> our_memo;
+
+    std::stack<ParentCOIK> workstack;
+    ParentCOIK query_pair = {std::min(parent_a_key, parent_b_key), std::max(parent_a_key, parent_b_key)};
+    workstack.push(query_pair);
+
+    while(!workstack.empty()) {
+        auto pair = workstack.top();
+        int64_t cat_x_id = pair.parent_a;
+        int64_t cat_y_id = pair.parent_b;
+
+        // Use our memoized value if found
+        if(auto our_memo_it = our_memo.find(pair); our_memo_it != our_memo.end()) {
+            workstack.pop();
+            continue;
+        }
+
+        // Use game's memoized value if found
+        if(auto memo_entry = memo_map.get(&pair); memo_entry != nullptr) {
+            our_memo[pair] = memo_entry->val;
+            workstack.pop();
+            continue;
+        }
+
+        // Starter or stray cat
+        if(cat_x_id == -1 || cat_y_id == -1) {
+            our_memo[pair] = 0.0;
+            workstack.pop();
+            continue;
+        }
+
+        auto cat_x_pedigree = pedigree_map.get(&cat_x_id);
+        auto cat_y_pedigree = pedigree_map.get(&cat_y_id);
+
+        // Self-kinship (base)
+        // ϕ(y, y) = 0.5(1 + COI(y))
+        if(cat_x_id == cat_y_id) {
+            if(cat_y_pedigree != nullptr) {
+                our_memo[pair] = 0.5 * (1.0 + cat_y_pedigree->val.coi);
+            } else {
+                // Cat not found in the pedigree map.
+                // Perform the calculation as if the cat's COI were 0.0 (self-kinship is 0.5).
+                our_memo[pair] = 0.5 * (1.0 + 0.0);  // i.e. 0.5
+            }
+            workstack.pop();
+            continue;
+        }
+
+        // Mutual-kinship (recursive)
+        // ϕ(x, y) = 0.5(ϕ(x, y.parent_a) + ϕ(x, y.parent_b))
+
+        // Either cat not found in the pedigree map
+        // Perform the calculation as if both cats' COIs were 0.0.
+        if(cat_x_pedigree == nullptr || cat_y_pedigree == nullptr) {
+            our_memo[pair] = 0.5 * (0.0 + 0.0); // i.e. 0.0
+            workstack.pop();
+            continue;
+        }
+
+        ParentCOIK pair_x_cross_y_parent_a = {std::min(cat_x_id, cat_y_pedigree->val.parent_a), std::max(cat_x_id, cat_y_pedigree->val.parent_a)};
+        ParentCOIK pair_x_cross_y_parent_b = {std::min(cat_x_id, cat_y_pedigree->val.parent_b), std::max(cat_x_id, cat_y_pedigree->val.parent_b)};
+        auto pair_x_cross_y_parent_a_memo_it = our_memo.find(pair_x_cross_y_parent_a);
+        auto pair_x_cross_y_parent_b_memo_it = our_memo.find(pair_x_cross_y_parent_b);
+        if(pair_x_cross_y_parent_a_memo_it != our_memo.end() && pair_x_cross_y_parent_b_memo_it != our_memo.end()) {
+            our_memo[pair] = 0.5 * (pair_x_cross_y_parent_a_memo_it->second + pair_x_cross_y_parent_b_memo_it->second);
+            workstack.pop();
+        } else {
+            // The recursive step will check the game's memo or recalculate as much as necessary
+            if(pair_x_cross_y_parent_a_memo_it == our_memo.end()) {
+                workstack.push(pair_x_cross_y_parent_a);
+            }
+            if(pair_x_cross_y_parent_b_memo_it == our_memo.end()) {
+                workstack.push(pair_x_cross_y_parent_b);
+            }
+            // Don't pop the current stack entry, we will need to circle back once the 2 deps are met
+        }
+    }
+
+    return our_memo[query_pair];
+}
+
 ManagedCatData make_kitten(CatData *p_parent_a, CatData *p_parent_b, double coi, Xoshiro256pContext *rng_override) {
     auto *p_tls = get_tls0_base<char>();
     Xoshiro256pContext *p_rng = reinterpret_cast<Xoshiro256pContext *>(p_tls + TLS0OFF_xoshiro256p_rng_context);
@@ -260,8 +394,11 @@ ManagedCatData make_kitten(CatData *p_parent_a, CatData *p_parent_b, double coi,
         *p_rng = *rng_override;
     }
     ManagedCatData kitten = new_default_cat();
+    glaiel__CatData_unk_init_register_in_name_history_override = true;
+    glaiel__CatData_unk_init_register_in_name_history_val = false;
     // Test tube kitty!
-    breed(kitten.get(), p_parent_a, p_parent_b, coi); // FIXME: this call will mutate the name history table and we do not restore it
+    breed(kitten.get(), p_parent_a, p_parent_b, coi);
+    glaiel__CatData_unk_init_register_in_name_history_override = false;
     if(rng_override != nullptr) {
         *rng_override = *p_rng;
     }

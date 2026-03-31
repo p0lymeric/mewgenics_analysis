@@ -24,13 +24,13 @@ static_assert(true); // makes clangd happy by ending preamble section
 
 struct GonObject {
     struct StringHasher {
-        static uint64_t hash(MsvcReleaseModeXString *key) {
+        static uint64_t hash(const MsvcReleaseModeXString *key) {
             // TODO
             (void)key;
             __debugbreak();
             return 0;
         }
-        static bool identical(MsvcReleaseModeXString *key1, MsvcReleaseModeXString *key2) {
+        static bool identical(const MsvcReleaseModeXString *key1, const MsvcReleaseModeXString *key2) {
             // TODO
             (void)key1;
             (void)key2;

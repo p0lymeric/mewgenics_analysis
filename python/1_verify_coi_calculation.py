@@ -33,13 +33,6 @@ def calculate_coi_mewgenics(pedigree, memo, parent_a_id, parent_b_id):
             workstack.pop()
             continue
 
-        # If a parent was not found in the pedigree map (paranoid/corrupted save handling?),
-        # treat the cat as a zero COI cat
-        if cat_x_id not in pedigree or cat_y_id not in pedigree:
-            memo[pair] = 0.0
-            workstack.pop()
-            continue
-
         # The rest of the function uses the concept of the coefficient of kinship, ϕ
 
         # ϕ and COI are tied by a key identity:
@@ -54,18 +47,30 @@ def calculate_coi_mewgenics(pedigree, memo, parent_a_id, parent_b_id):
         # - all cats can trace their origins to a starter or stray cat,
         # calculations using the recursive definition of ϕ are assured to reach a base case.
 
-        # ϕ(y, y) = 0.5(1 + COI(y))
+        # Base case: ϕ(y, y) = 0.5(1 + COI(y))
         if cat_x_id == cat_y_id:
-            # Another way to think of 'pedigree[cat_y_id].coi' is that it is a memoization of
-            # "calculate_coi_mewgenics(pedigree, memo, pedigree[cat_y_id].parent_a_id, pedigree[cat_y_id].parent_b_id)"
-            memo[pair] = 0.5 * (1.0 + pedigree[cat_y_id].coi)
+            if cat_y_id in pedigree:
+                # Another way to think of 'pedigree[cat_y_id].coi' is that it is a memoization of
+                # "calculate_coi_mewgenics(pedigree, memo, pedigree[cat_y_id].parent_a_id, pedigree[cat_y_id].parent_b_id)"
+                memo[pair] = 0.5 * (1.0 + pedigree[cat_y_id].coi)
+            else:
+                # If not found in the pedigree map (paranoid/corrupted save handling?),
+                # treat the cat as having zero COI.
+                memo[pair] = 0.5 * (1.0 + 0.0) # i.e. 0.5
+            workstack.pop()
+            continue
+
+        # Recursive case: ϕ(x, y) = 0.5(ϕ(x, y.parent_a) + ϕ(x, y.parent_b))
+        # If not found in the pedigree map (paranoid/corrupted save handling?),
+        # treat the two cats as having zero COI.
+        if cat_x_id not in pedigree or cat_y_id not in pedigree:
+            memo[pair] = 0.5 * (0.0 + 0.0) # i.e. 0.0
             workstack.pop()
             continue
 
         pair_x_cross_y_parent_a = tuple(sorted([cat_x_id, pedigree[cat_y_id].parent_a_id]))
         pair_x_cross_y_parent_b = tuple(sorted([cat_x_id, pedigree[cat_y_id].parent_b_id]))
 
-        # ϕ(x, y) = 0.5(ϕ(x, y.parent_a) + ϕ(x, y.parent_b))
         if pair_x_cross_y_parent_a in memo and pair_x_cross_y_parent_b in memo:
             # Fetch ϕ(x, y.parent_a) and ϕ(x, y.parent_b) from the memo
             memo[pair] = 0.5 * (memo[pair_x_cross_y_parent_a] + memo[pair_x_cross_y_parent_b])
