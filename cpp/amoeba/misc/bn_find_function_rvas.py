@@ -18,7 +18,7 @@ symbol_signatures = {
     'ADDRESS_glaiel__CatData_dtor': '1e47bead-7c70-5cb3-95d3-79473ce939ef',
     'ADDRESS_glaiel__CatData_unk_init': 'cb987a75-507b-50b5-884a-36aeb6bae1c1',
     'ADDRESS_glaiel__CatData_unk_init_bodyparts': 'dfbca3cb-df39-5fc7-9e94-3b59ad621bf4',
-    'ADDRESS_glaiel__CatData_breed': 'd6a5fead-b8df-5b2a-81a5-1d34b773ac3c',
+    'ADDRESS_glaiel__CatData__breed': 'd6a5fead-b8df-5b2a-81a5-1d34b773ac3c',
 }
 
 def main():

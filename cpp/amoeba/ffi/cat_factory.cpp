@@ -157,6 +157,58 @@ ManagedCatData load_cat(int64_t sql_id) {
     return new_cat;
 }
 
+void overwrite_cat(CatData *target_cat, int64_t source_sql_id) {
+    MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+
+    if(p_md == nullptr) {
+        return;
+    }
+
+    std::vector<char> decompressed_cat;
+    G.sqlite3.exec_path(
+        std::filesystem::path(p_md->sqlsavefile.file_path.as_native_string_view()),
+        "SELECT data from cats WHERE key = :key;",
+        {std::make_pair(":key", source_sql_id)},
+        [&decompressed_cat](sqlite3_stmt * stmt) -> bool {
+            const char *blob = reinterpret_cast<const char *>(sqlite3_column_blob(stmt, 0));
+            int size = sqlite3_column_bytes(stmt, 0);
+
+            if(size == 0) {
+                D::warn("A cat blob in the cats table has 0 size!");
+                return false;
+            }
+
+            int decompressed_size = reinterpret_cast<const int *>(blob)[0];
+            decompressed_cat.resize(decompressed_size);
+            if(LZ4_decompress_safe(blob + 4, decompressed_cat.data(), size - 4, decompressed_size) != decompressed_size) {
+                D::error("An LZ4-compressed cat failed to decompress!");
+                std::vector<char>().swap(decompressed_cat);
+                return false;
+            }
+
+            return false;
+        }
+    );
+
+    if(decompressed_cat.size() == 0) {
+        return;
+    }
+
+    ByteStream byte_stream = {};
+    byte_stream.direction_0_des_buffer_1_ser_buffer_2_ser_ostream = 0;
+    byte_stream.either_platform_or_stream_endianness = 0;
+    byte_stream.either_stream_or_platform_endianness = 0;
+    byte_stream.maximum_auto_endian_swap_size = 8;
+    byte_stream.string_intern_table = nullptr;
+    byte_stream.des_buffer = decompressed_cat.data();
+    byte_stream.des_buffer_size = static_cast<int>(decompressed_cat.size());
+    byte_stream.des_buffer_needs_free = false;
+    byte_stream.des_buffer_read_cursor = 0;
+
+
+    deserialize_into_cat(target_cat, &byte_stream);
+}
+
 std::unordered_map<int64_t, ManagedCatData> load_all_cats() {
     MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
 
@@ -246,7 +298,7 @@ void unk_init_bodyparts(BodyParts *p_bodyparts) {
 
 void breed(CatData *p_kitten, CatData *p_parent_a, CatData *p_parent_b, double coi) {
     using ADDRESS_glaiel__CatData_breed_FP = void (__cdecl *)(CatData *p_kitten, CatData *p_parent_a, CatData *p_parent_b, double coi, void *vector_of_furniture_effects);
-    ADDRESS_glaiel__CatData_breed_FP ADDRESS_glaiel__CatData_breed_fp = *reinterpret_cast<ADDRESS_glaiel__CatData_breed_FP>(ADDRESS_glaiel__CatData_breed + G.host_exec_base_va);
+    ADDRESS_glaiel__CatData_breed_FP ADDRESS_glaiel__CatData_breed_fp = *reinterpret_cast<ADDRESS_glaiel__CatData_breed_FP>(ADDRESS_glaiel__CatData__breed + G.host_exec_base_va);
     // TODO furniture effects, guessing the house interstitial function retrieves vector_of_furniture_effects based on the room where the deed was done
     ADDRESS_glaiel__CatData_breed_fp(p_kitten, p_parent_a, p_parent_b, coi, nullptr);
 }

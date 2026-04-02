@@ -37,7 +37,12 @@ inline constexpr uintptr_t ADDRESS_glaiel__CatData_ctor = 0x5dd60; // WARP 7089d
 inline constexpr uintptr_t ADDRESS_glaiel__CatData_dtor = 0x5dce0; // WARP 1e47bead-7c70-5cb3-95d3-79473ce939ef
 inline constexpr uintptr_t ADDRESS_glaiel__CatData_unk_init = 0xb5260; // WARP cb987a75-507b-50b5-884a-36aeb6bae1c1
 inline constexpr uintptr_t ADDRESS_glaiel__CatData_unk_init_bodyparts = 0x734760; // WARP dfbca3cb-df39-5fc7-9e94-3b59ad621bf4
-inline constexpr uintptr_t ADDRESS_glaiel__CatData_breed = 0xa6790; // WARP d6a5fead-b8df-5b2a-81a5-1d34b773ac3c
+inline constexpr uintptr_t ADDRESS_glaiel__CatData__breed = 0xa6790; // WARP d6a5fead-b8df-5b2a-81a5-1d34b773ac3c
+// inline constexpr uintptr_t ADDRESS_glaiel__unk_spawn_custom_stray_handler = 0x1f1dd0; // WARP 9b184da4-b056-5067-8a8e-dd49212bf1e7
+// inline constexpr uintptr_t ADDRESS_glaiel__HouseCat__unk_remove_from_world = 0x1fcf20; // WARP c20e4014-a3ed-5555-9ca0-629fff444e5b
+inline constexpr uintptr_t ADDRESS_maybe_create_stray_catdata_and_register_in_pedigree = 0x0d5540; // WARP 2ca48645-fa59-519c-b8d7-e000fbbefd24
+inline constexpr uintptr_t ADDRESS_maybe_make_entity = 0x95afe0; // WARP ca24a073-64b1-5459-8e35-daf6a5ecb251
+inline constexpr uintptr_t ADDRESS_maybe_spawn_stray_immediate = 0x1f3a70; // WARP a26ef3ea-f90c-5415-bf20-0341817189e4
 
 // Data offsets are encoded as relative VAs
 inline constexpr uintptr_t DATAOFF_glaiel__MewDirector__p_singleton = 0x13c7bd0;

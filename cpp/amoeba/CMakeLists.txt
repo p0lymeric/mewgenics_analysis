@@ -43,6 +43,7 @@ add_library(${HOOK_NAME} SHARED
     utilities/transaction_logger.cpp
     utilities/sqlite3_conn_wrapper.cpp
     ffi/cat_factory.cpp
+    ffi/experimental.cpp
 )
 
 target_include_directories(${HOOK_NAME} PUBLIC

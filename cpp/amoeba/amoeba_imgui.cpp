@@ -6,6 +6,7 @@
 #include "utilities/strings.hpp"
 #include "utilities/memory.hpp"
 #include "ffi/cat_factory.hpp"
+#include "ffi/experimental.hpp"
 
 #include "SDL3/SDL.h"
 #include "imgui.h"
@@ -717,9 +718,9 @@ void show_data_explorer_window() {
             ImguiTextStdFmt("p_MewDirector: {:p}", static_cast<void *>(p_md));
             if(p_md != nullptr) {
                 CatDatabase *p_cdb = p_md->cats;
+                ImguiTextStdFmt("p_Director: {:p}", static_cast<void *>(&p_md->director));
                 ImguiTextStdFmt("p_CatDatabase: {:p}", static_cast<void *>(p_cdb));
                 ImguiTextStdFmt("p_SQLSaveFile: {:p}", static_cast<void *>(&p_md->sqlsavefile));
-                ImguiTextStdFmt("p_House: {:p}", static_cast<void *>(&p_md->house));
             }
             ImGui::TreePop();
         }
@@ -962,6 +963,23 @@ void show_data_explorer_window() {
                         ImGui::TableNextRow();
                         ImGui::TableNextColumn();
                         ImguiTextStdFmt("{}", convert_utf16_wstring_to_utf8_string(*p_name));
+                    }
+                    ImGui::EndTable();
+                }
+            }
+            ImGui::TreePop();
+        }
+
+        if(ImGui::TreeNode("Scenes")) {
+            if(p_md != nullptr) {
+                auto &scenes = p_md->director->scenes;
+                if(ImGui::BeginTable("table1", 1)) {
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                    ImGui::TableHeadersRow();
+                    for(auto pp_scene = scenes._Myfirst; pp_scene < scenes._Mylast; pp_scene++) {
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn();
+                        ImguiTextStdFmt("{}", (**pp_scene).name);
                     }
                     ImGui::EndTable();
                 }
@@ -1434,7 +1452,7 @@ void show_save_explorer_window() {
                 ImGui::InputScalar("RNG context 3", ImGuiDataType_U64, &our_prng_state.ctx[3], nullptr, nullptr, "%016llx");
                 ImGui::TreePop();
             }
-            if(ImGui::TreeNode("Stray generator")) {
+            if(ImGui::TreeNode("Stray CatData generator")) {
                 static ManagedCatData random_cat;
                 if(ImGui::Button("Roll a stray!")) {
                     random_cat = make_stray(&our_prng_state);
@@ -1444,7 +1462,7 @@ void show_save_explorer_window() {
                 }
                 ImGui::TreePop();
             }
-            if(ImGui::TreeNode("Kitten generator")) {
+            if(ImGui::TreeNode("Kitten CatData generator")) {
                 ImguiTextStdFmt("To use this generator, you must first load your save's cats under the 'Cats' section.");
                 static int64_t parent_a_key;
                 static int64_t parent_b_key;
@@ -1479,6 +1497,33 @@ void show_save_explorer_window() {
                 }
                 if(kitten != nullptr) {
                     show_cat(*kitten);
+                }
+                ImGui::TreePop();
+            }
+            if(ImGui::TreeNode("Stray spawner")) {
+                ImguiTextStdFmt("Warning: These buttons will add new cats to the save.");
+                ImguiTextStdFmt("Pressing them away from the house will crash the game!");
+                if(ImGui::Button("Spawn a stray!")) {
+                    spawn_stray_at_house([](CatData *) -> void {});
+                }
+                if(ImGui::Button("Spawn a gigacat!")) {
+                    spawn_stray_at_house([](CatData *cat) -> void {
+                        cat->body_parts.pitch = 0.5;
+                        cat->body_parts.head.part_sprite_idx = 10;
+                        cat->stats_heritable.cha = 10;
+                        std::wstring new_name = L"gigacat";
+                        // type f**kery
+                        // (MsvcReleaseModeXWString implementation does not support modification so we'll borrow MSVC's implementation for now)
+                        std::destroy_at(reinterpret_cast<std::wstring *>(&cat->name));
+                        std::construct_at(reinterpret_cast<std::wstring *>(&cat->name), std::move(new_name));
+                    });
+                }
+                static int64_t cat_sql_key_to_clone;
+                ImGui::InputScalar("Cat to clone (SQL key)", ImGuiDataType_S64, &cat_sql_key_to_clone);
+                if(ImGui::Button("Spawn a clone!")) {
+                    spawn_stray_at_house([](CatData *cat) -> void {
+                        overwrite_cat(cat, cat_sql_key_to_clone);
+                    });
                 }
                 ImGui::TreePop();
             }

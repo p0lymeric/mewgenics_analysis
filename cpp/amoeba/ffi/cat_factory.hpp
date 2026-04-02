@@ -18,6 +18,7 @@ struct CatDataDeleter {
 using ManagedCatData = std::unique_ptr<CatData, CatDataDeleter>;
 
 ManagedCatData load_cat(int64_t sql_id);
+void overwrite_cat(CatData *target_cat, int64_t source_sql_id);
 std::unordered_map<int64_t, ManagedCatData> load_all_cats();
 ManagedCatData make_stray(Xoshiro256pContext *rng_override = nullptr);
 double calculate_coi(int64_t parent_a_key, int64_t parent_b_key);
