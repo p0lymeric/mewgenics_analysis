@@ -371,13 +371,13 @@ struct CatData {
     MsvcReleaseModeXString actives_accessible[4];
     MsvcReleaseModeXString actives_inherited[4];
     MsvcReleaseModeXString passive_0;
-    int64_t passive_0_sidecar;
+    int64_t passive_0_level;
     MsvcReleaseModeXString passive_1;
-    int64_t passive_1_sidecar;
+    int64_t passive_1_level;
     MsvcReleaseModeXString passive_2;
-    int64_t passive_2_sidecar;
+    int64_t passive_2_level;
     MsvcReleaseModeXString passive_3;
-    int64_t passive_3_sidecar;
+    int64_t passive_3_level;
     Equipment head;
     Equipment face;
     Equipment neck;
@@ -528,6 +528,8 @@ struct MewDirector {
     char _588[8];
     char _590[8];
     CatDatabase* cats;
+    char _5a0[8];
+    void *house;
     // likely a LOT more stuff...
 };
 static_assert(offsetof(MewDirector, sqlsavefile) == 1192);

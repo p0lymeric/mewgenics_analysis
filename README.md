@@ -11,3 +11,7 @@ A loose collection of scripts and artifacts written to explore Mewgenics game da
     * **python/1_pedigree_hash_algorithm.py** - reverse engineering of the perigree store's hash implementations.
     * **python/1_verify_coi_calculation.py** - reverse engineering of the perigree store's COI calculations.
     * **python/2_amoeba_diff.py** - difference analyzer that lists which fields in which cats changed between two saves in an Amoeba stream.
+
+### Acknowledgments:
+* [PurpleMyst](https://github.com/PurpleMyst) for identifying unknown fields in the ImHex cat patterns.
+* The code in this repo makes extensive use of various libraries, listed in [ATTRIBUTION.md](ATTRIBUTION.md).

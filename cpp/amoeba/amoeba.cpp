@@ -2,6 +2,8 @@
 #include "utilities/debug_console.hpp"
 #include "utilities/function_hook.hpp"
 
+#include <filesystem>
+
 #include <windows.h>
 
 #include "detours.h"
@@ -36,6 +38,13 @@ bool on_attach() {
     uintptr_t host_exec_base_va = reinterpret_cast<uintptr_t>(GetModuleHandle(NULL));
     G.host_exec_base_va = host_exec_base_va;
 
+    // Calculate the SHA-256 digest of the executable
+    std::filesystem::path exe_path = get_process_exe_path();
+    G.exe_actual_sha256 = sha256_file(exe_path);
+    if(G.exe_actual_sha256.has_value()) {
+        G.exe_hash_mismatch_detected = (G.exe_actual_sha256.value() != EXE_SHA256);
+    }
+
     // Instantiate the transaction logger
     G.tlogger = new TransactionLogger(TLOG_FILE_LOCATION, true);
     // open its backing file for write
@@ -60,6 +69,7 @@ bool on_attach() {
     D::info("DllMain DLL_PROCESS_ATTACH\n");
     D::info("Hook base VA: 0x{:x}\n", G.dll_base_va);
     D::info("Executable base VA: 0x{:x}\n", host_exec_base_va);
+    D::info("Executable SHA-256: {}\n", G.exe_actual_sha256.has_value() ? hash256bit_to_string(G.exe_actual_sha256.value()) : "<unknown>");
 
     // Try to install function hooks
     if(!SFunctionHookRegistry::install_hooks(host_exec_base_va)) {

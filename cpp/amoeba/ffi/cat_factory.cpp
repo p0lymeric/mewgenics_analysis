@@ -40,7 +40,7 @@ ManagedCatData load_cat(int64_t sql_id) {
     // RIGHTSHOLDER: Beanies Teaching Films, Ltd.
     // YEAR OF PRODUCTION: 1958 (MCMLVIII)
 
-    MewDirector *p_md = *reinterpret_cast<MewDirector **>(ADDRESS_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+    MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
 
     if(p_md == nullptr) {
         return nullptr;
@@ -158,7 +158,7 @@ ManagedCatData load_cat(int64_t sql_id) {
 }
 
 std::unordered_map<int64_t, ManagedCatData> load_all_cats() {
-    MewDirector *p_md = *reinterpret_cast<MewDirector **>(ADDRESS_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+    MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
 
     ByteStream byte_stream = {};
     byte_stream.direction_0_des_buffer_1_ser_buffer_2_ser_ostream = 0;
@@ -292,7 +292,7 @@ struct ParentCOINativeHasher {
 };
 
 double calculate_coi(int64_t parent_a_key, int64_t parent_b_key) {
-    MewDirector *p_md = *reinterpret_cast<MewDirector **>(ADDRESS_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+    MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
     if(p_md == nullptr) {
         return 0.0;
     }

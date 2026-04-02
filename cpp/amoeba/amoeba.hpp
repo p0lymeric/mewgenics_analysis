@@ -2,8 +2,10 @@
 
 #include "utilities/transaction_logger.hpp"
 #include "utilities/sqlite3_conn_wrapper.hpp"
+#include "utilities/checksum.hpp"
 
 #include <cstdint>
+#include <optional>
 
 // Main program declarations.
 //
@@ -20,18 +22,26 @@ extern GlobalContext G;
 inline constexpr uint64_t TLOG_SCHEMA_VERSION_HINT = 1;
 
 // These addresses were extracted from Mewgenics.exe
-// Mewgenics 1.0.20870 (SHA-256 969294038979e15f1b6638ea795f9687952c62858e3f98d355f418b0f5e2f814)
-// Image offsets are encoded as relative VAs
-inline constexpr uintptr_t ADDRESS_glaiel__SQLSaveFile__BeginSave = 0xa03bd0;
-inline constexpr uintptr_t ADDRESS_glaiel__SQLSaveFile__EndSave = 0xa03c70;
-inline constexpr uintptr_t ADDRESS_glaiel__SQLSaveFile__SQL = 0xa03000;
-inline constexpr uintptr_t ADDRESS_glaiel__SerializeCatData = 0x22cea0;
-inline constexpr uintptr_t ADDRESS_glaiel__CatData_ctor = 0x05dbf0;
-inline constexpr uintptr_t ADDRESS_glaiel__CatData_dtor = 0x05db70;
-inline constexpr uintptr_t ADDRESS_glaiel__CatData_unk_init = 0x0b50e0;
-inline constexpr uintptr_t ADDRESS_glaiel__CatData_unk_init_bodyparts = 0x73ebc0;
-inline constexpr uintptr_t ADDRESS_glaiel__CatData_breed = 0x0a6610;
-inline constexpr uintptr_t ADDRESS_glaiel__MewDirector__p_singleton = 0x13ce230;
+// Mewgenics 1.0.20941 (SHA-256 c10cb2435874db1e291b949eb226e061512e05f2bc235504a6617f525688b26c)
+
+// SHA-256 hash of the Mewgenics.exe binary last used to update hardcoded offsets
+inline constexpr Hash256Bit EXE_SHA256 = c_str_to_hash256bit("c10cb2435874db1e291b949eb226e061512e05f2bc235504a6617f525688b26c");
+
+// Function offsets are encoded as relative VAs
+// The script under misc/bn_find_function_rvas.py can help with recovering some of these addresses after a game update
+inline constexpr uintptr_t ADDRESS_glaiel__SQLSaveFile__BeginSave = 0x9fb5c0; // WARP e073a811-ac5e-5f48-8b6d-472c34e4e0ef
+inline constexpr uintptr_t ADDRESS_glaiel__SQLSaveFile__EndSave = 0x9fb660; // WARP 455fdaaf-58a0-5f36-8169-7e85de7ccddb
+inline constexpr uintptr_t ADDRESS_glaiel__SQLSaveFile__SQL = 0x9fa9f0; // WARP 74c83bc6-9e76-5549-8b2c-3b3b53cccaf8
+inline constexpr uintptr_t ADDRESS_glaiel__SerializeCatData = 0x22d360; // WARP 1184393d-db7a-5f40-89f7-d4cb6f23f3fd
+inline constexpr uintptr_t ADDRESS_glaiel__CatData_ctor = 0x5dd60; // WARP 7089d0e4-d065-52af-957c-40bb37408c1c
+inline constexpr uintptr_t ADDRESS_glaiel__CatData_dtor = 0x5dce0; // WARP 1e47bead-7c70-5cb3-95d3-79473ce939ef
+inline constexpr uintptr_t ADDRESS_glaiel__CatData_unk_init = 0xb5260; // WARP cb987a75-507b-50b5-884a-36aeb6bae1c1
+inline constexpr uintptr_t ADDRESS_glaiel__CatData_unk_init_bodyparts = 0x734760; // WARP dfbca3cb-df39-5fc7-9e94-3b59ad621bf4
+inline constexpr uintptr_t ADDRESS_glaiel__CatData_breed = 0xa6790; // WARP d6a5fead-b8df-5b2a-81a5-1d34b773ac3c
+
+// Data offsets are encoded as relative VAs
+inline constexpr uintptr_t DATAOFF_glaiel__MewDirector__p_singleton = 0x13c7bd0;
+
 // TLS variable offsets are encoded relative to the base VA of their TLS slot
 inline constexpr uintptr_t TLS0OFF_xoshiro256p_rng_context = 0x178;
 
@@ -62,4 +72,6 @@ struct GlobalContext {
     // TODO since this class isn't RAII anymore, don't need to dynamically allocate
     TransactionLogger *tlogger;
     Sqlite3ConnWrapper sqlite3;
+    std::optional<Hash256Bit> exe_actual_sha256;
+    bool exe_hash_mismatch_detected;
 };

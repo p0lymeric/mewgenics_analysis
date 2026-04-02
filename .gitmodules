@@ -13,3 +13,6 @@
 [submodule "cpp/lib/SDL"]
 	path = cpp/lib/SDL
 	url = https://github.com/libsdl-org/SDL
+[submodule "cpp/lib/libtomcrypt"]
+	path = cpp/lib/libtomcrypt
+	url = https://github.com/libtom/libtomcrypt

@@ -10,7 +10,7 @@ BodyParts = namedtuple('BodyParts', ['texture_sprite_idx', 'heritable_palette_id
 CatStats = namedtuple('CatStats', ['str', 'dex', 'con', 'int', 'spd', 'cha', 'lck'])
 Injuries = namedtuple('Injuries', ['broken_paw', 'torn_tendon', 'broken_rib', 'concussion', 'disfigured', 'broken_leg', 'jinxed', 'immolated', 'exsanguinated', 'poisoned', 'cursed', 'radiated', 'unused_0', 'unused_1', 'unused_2', 'unused_3'])
 CampaignStats = namedtuple('CampaignStats', ['hp', 'dead', 'unknown_0', 'unknown_1', 'event_stat_modifiers'])
-# PassiveAbility = namedtuple('PassiveAbility', ['name', 'unknown_0'])
+# PassiveAbility = namedtuple('PassiveAbility', ['name', 'level'])
 Equipment = namedtuple('Equipment', ['version', 'has_equipment', 'name', 'aux_string', 'uses_left', 'unknown_2', 'unknown_3', 'unknown_4', 'unknown_5', 'times_taken_on_adventure'])
 Kit = namedtuple('Kit', ['head', 'face', 'neck', 'weapon', 'trinket'])
 

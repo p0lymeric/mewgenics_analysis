@@ -75,6 +75,7 @@ target_link_libraries(${HOOK_NAME} PRIVATE
     # Instead of building SDL3, we use exported symbols from the exe (Mewgenics_exports) instead
     Mewgenics_exports
     sqlite3
+    libtomcrypt
 )
 
 install(TARGETS ${TARGET_NAME} ${HOOK_NAME} RUNTIME DESTINATION bin)

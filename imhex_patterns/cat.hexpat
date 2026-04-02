@@ -239,7 +239,8 @@ String actives_inherited[4] @ $;
 
 struct Passive {
     String name;
-    s32 unknown_0;
+    // 1 - base variant, 2 - upgraded "+" variant
+    s32 level;
 };
 
 // Current usable passive ability list

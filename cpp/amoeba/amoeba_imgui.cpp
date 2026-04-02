@@ -1,5 +1,6 @@
 #include "amoeba.hpp"
 #include "types/glaiel.hpp"
+#include "utilities/checksum.hpp"
 #include "utilities/debug_console.hpp"
 #include "utilities/function_hook.hpp"
 #include "utilities/strings.hpp"
@@ -29,6 +30,8 @@ struct ImguiPrivateState {
     bool initialized = false;
     bool swapwindow_hook_nested_call_guard = false;
     bool request_dll_eject = false;
+
+    bool user_shown_version_mismatch_modal = false;
 
     bool hide_all = false;
     bool enable_experimental_widgets = false;
@@ -120,6 +123,43 @@ void show_exit_confirmation_modal(bool signal) {
         ImGui::SetItemDefaultFocus();
         ImGui::SameLine();
         if(ImGui::Button("No", ImVec2(120, 0)) || !x_button) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
+void show_version_mismatch_modal() {
+    if(G.exe_hash_mismatch_detected && !P.user_shown_version_mismatch_modal) {
+        ImGui::OpenPopup("Warning: Version mismatch");
+        P.user_shown_version_mismatch_modal = true;
+    }
+    // Always center this window when appearing
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    bool x_button = true;
+    if(ImGui::BeginPopupModal("Warning: Version mismatch", &x_button, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImguiTextStdFmt("Amoeba detected a different Mewgenics.exe than expected, by hash comparison.");
+        ImguiTextStdFmt("Hardcoded memory offsets in amoeba.hpp will almost certainly need to be updated.");
+        ImguiTextStdFmt("You may continue as if this mismatch was not checked, eject Amoeba, or exit Mewgenics.");
+        ImGui::Separator();
+        ImguiTextStdFmt("Expected SHA-256: {}", hash256bit_to_string(EXE_SHA256));
+        ImguiTextStdFmt("Actual SHA-256: {}", G.exe_actual_sha256.has_value() ? hash256bit_to_string(G.exe_actual_sha256.value()) : "<unknown>");
+        ImGui::Separator();
+
+        ImGui::SetItemDefaultFocus();
+        if(ImGui::Button("Continue", ImVec2(120, 0)) || !x_button) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if(ImGui::Button("Eject Amoeba", ImVec2(120, 0))) {
+            P.request_dll_eject = true;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if(ImGui::Button("Exit process", ImVec2(120, 0))) {
+            do_process_termination();
+            // unreachable
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
@@ -331,10 +371,10 @@ void edit_cat(CatData &cat) {
         auto p_base = cat.actives_inherited;
         ImguiTextStdFmt("Active (inherited) {}: {}", i, p_base[i]);
     }
-    ImguiTextStdFmt("Passive 0: {} {}", cat.passive_0, cat.passive_0_sidecar);
-    ImguiTextStdFmt("Passive 1: {} {}", cat.passive_1, cat.passive_1_sidecar);
-    ImguiTextStdFmt("Mutation 0: {} {}", cat.passive_2, cat.passive_2_sidecar);
-    ImguiTextStdFmt("Mutation 1: {} {}", cat.passive_3, cat.passive_3_sidecar);
+    ImguiTextStdFmt("Passive 0: {} {}", cat.passive_0, cat.passive_0_level);
+    ImguiTextStdFmt("Passive 1: {} {}", cat.passive_1, cat.passive_1_level);
+    ImguiTextStdFmt("Mutation 0: {} {}", cat.passive_2, cat.passive_2_level);
+    ImguiTextStdFmt("Mutation 1: {} {}", cat.passive_3, cat.passive_3_level);
     ImguiTextStdFmt("Equipment");
     if(ImGui::BeginTable("equipment_table", 10)) {
         ImGui::TableSetupColumn("Thing", ImGuiTableColumnFlags_WidthStretch, 0.5f);
@@ -565,10 +605,10 @@ void show_cat(CatData &cat) {
         auto p_base = cat.actives_inherited;
         ImguiTextStdFmt("Active (inherited) {}: {}", i, p_base[i]);
     }
-    ImguiTextStdFmt("Passive 0: {} {}", cat.passive_0, cat.passive_0_sidecar);
-    ImguiTextStdFmt("Passive 1: {} {}", cat.passive_1, cat.passive_1_sidecar);
-    ImguiTextStdFmt("Mutation 0: {} {}", cat.passive_2, cat.passive_2_sidecar);
-    ImguiTextStdFmt("Mutation 1: {} {}", cat.passive_3, cat.passive_3_sidecar);
+    ImguiTextStdFmt("Passive 0: {} {}", cat.passive_0, cat.passive_0_level);
+    ImguiTextStdFmt("Passive 1: {} {}", cat.passive_1, cat.passive_1_level);
+    ImguiTextStdFmt("Mutation 0: {} {}", cat.passive_2, cat.passive_2_level);
+    ImguiTextStdFmt("Mutation 1: {} {}", cat.passive_3, cat.passive_3_level);
     ImguiTextStdFmt("Equipment");
     if(ImGui::BeginTable("equipment_table", 10)) {
         ImGui::TableSetupColumn("Thing", ImGuiTableColumnFlags_WidthStretch, 0.5f);
@@ -669,7 +709,7 @@ void show_data_explorer_window() {
     ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
     if(ImGui::Begin("Data explorer", &P.show_data_explorer)) {
         // good architecture, just need to null check one global and you're ready to go!
-        MewDirector *p_md = *reinterpret_cast<MewDirector **>(ADDRESS_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+        MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
 
         if(ImGui::TreeNode("Pointers")) {
             ImguiTextStdFmt("Hook base VA: {:p}", reinterpret_cast<void *>(G.dll_base_va));
@@ -679,6 +719,7 @@ void show_data_explorer_window() {
                 CatDatabase *p_cdb = p_md->cats;
                 ImguiTextStdFmt("p_CatDatabase: {:p}", static_cast<void *>(p_cdb));
                 ImguiTextStdFmt("p_SQLSaveFile: {:p}", static_cast<void *>(&p_md->sqlsavefile));
+                ImguiTextStdFmt("p_House: {:p}", static_cast<void *>(&p_md->house));
             }
             ImGui::TreePop();
         }
@@ -935,7 +976,7 @@ std::unordered_map<int64_t, CatData *> build_unified_cat_table() {
     // merge the two maps, taking game CatData instances over analyzer CatData, and sort by sql id
     std::unordered_map<int64_t, CatData *> unified_cat_table;
 
-    MewDirector *p_md = *reinterpret_cast<MewDirector **>(ADDRESS_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+    MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
     if(p_md != nullptr) {
         CatDatabase *p_cdb = p_md->cats;
         unified_cat_table.reserve(std::max(p_cdb->cats._List._Mysize, P.save_explorer_cats.size()));
@@ -969,7 +1010,7 @@ struct PedigreeIndex {
 };
 
 PedigreeIndex build_pedigree_index() {
-    MewDirector *p_md = *reinterpret_cast<MewDirector **>(ADDRESS_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+    MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
     std::unordered_map<int64_t, std::set<int64_t>> children_table;
     std::unordered_map<int64_t, std::unordered_map<int64_t, size_t>> mate_table;
     if(p_md != nullptr) {
@@ -1253,7 +1294,7 @@ void show_feline_therapist_window() {
         ImguiTextStdFmt("{}", navigation_cat_desc);
 
         if(picked_cat != nullptr) {
-            MewDirector *p_md = *reinterpret_cast<MewDirector **>(ADDRESS_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+            MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
             if(p_md != nullptr) {
                 // TODO yet another all-cats operation executed every frame
                 PedigreeIndex pedigree_index = build_pedigree_index();
@@ -1484,6 +1525,7 @@ MAKE_PHOOK("SDL_GL_SwapWindow",
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
 
+    show_version_mismatch_modal();
     if(!P.hide_all) {
         show_main_menu_bar();
         if(P.show_imgui_demo) {
