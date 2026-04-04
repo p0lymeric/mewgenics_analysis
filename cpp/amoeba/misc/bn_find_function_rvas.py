@@ -19,6 +19,11 @@ symbol_signatures = {
     'ADDRESS_glaiel__CatData_unk_init': 'cb987a75-507b-50b5-884a-36aeb6bae1c1',
     'ADDRESS_glaiel__CatData_unk_init_bodyparts': 'dfbca3cb-df39-5fc7-9e94-3b59ad621bf4',
     'ADDRESS_glaiel__CatData__breed': 'd6a5fead-b8df-5b2a-81a5-1d34b773ac3c',
+    # 'ADDRESS_glaiel__unk_spawn_custom_stray_handler': '9b184da4-b056-5067-8a8e-dd49212bf1e7',
+    'ADDRESS_glaiel__HouseCat__unk_remove_from_world': 'c20e4014-a3ed-5555-9ca0-629fff444e5b',
+    'ADDRESS_maybe_create_stray_catdata_and_register_in_pedigree': '2ca48645-fa59-519c-b8d7-e000fbbefd24',
+    'ADDRESS_maybe_make_entity': 'ca24a073-64b1-5459-8e35-daf6a5ecb251',
+    'ADDRESS_maybe_spawn_stray_immediate': 'a26ef3ea-f90c-5415-bf20-0341817189e4',
 }
 
 def main():

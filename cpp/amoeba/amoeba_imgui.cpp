@@ -986,6 +986,46 @@ void show_data_explorer_window() {
             }
             ImGui::TreePop();
         }
+
+        if(ImGui::TreeNode("House")) {
+            if(p_md != nullptr) {
+                auto &scenes = p_md->director->scenes;
+                Scene *p_house = nullptr;
+                for(auto pp_scene = scenes._Myfirst; pp_scene < scenes._Mylast; pp_scene++) {
+                    if((*pp_scene)->name.as_native_string_view() == "House") {
+                        p_house = *pp_scene;
+                        break;
+                    }
+                }
+                // ImguiTextStdFmt("All components");
+                // if(p_house != nullptr && ImGui::BeginTable("table1", 1)) {
+                //     ImGui::TableSetupColumn("Type ID", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                //     ImGui::TableHeadersRow();
+                //     for(auto hc = p_house->components->begin(); hc < p_house->components->end(); hc++) {
+                //         ImGui::TableNextRow();
+                //         ImGui::TableNextColumn();
+                //         ImguiTextStdFmt("{:02x}", (*hc)->vtable->type_id());
+                //     }
+                //     ImGui::EndTable();
+                // }
+                ImguiTextStdFmt("HouseCats");
+                if(p_house != nullptr && ImGui::BeginTable("table2", 1)) {
+                    ImGui::TableSetupColumn("SQL ID", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                    ImGui::TableHeadersRow();
+                    for(auto hc = p_house->components->begin(); hc < p_house->components->end(); hc++) {
+                        if((*hc)->vtable->type_id() != 0x444) {
+                            continue;
+                        }
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn();
+                        auto housecat = static_cast<HouseCat *>(*hc);
+                        ImguiTextStdFmt("{}", housecat->sql_key);
+                    }
+                    ImGui::EndTable();
+                }
+            }
+            ImGui::TreePop();
+        }
     }
     ImGui::End();
 }
@@ -1524,6 +1564,11 @@ void show_save_explorer_window() {
                     spawn_stray_at_house([](CatData *cat) -> void {
                         overwrite_cat(cat, cat_sql_key_to_clone);
                     });
+                }
+                static int64_t cat_sql_key_to_despawn;
+                ImGui::InputScalar("Cat to despawn (SQL key)", ImGuiDataType_S64, &cat_sql_key_to_despawn);
+                if(ImGui::Button("Despawn!")) {
+                    despawn_housecat(cat_sql_key_to_despawn);
                 }
                 ImGui::TreePop();
             }

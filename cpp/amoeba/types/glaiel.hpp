@@ -497,8 +497,56 @@ struct CatDatabase {
     // likely more stuff...
 };
 
+struct ComponentVTable;
+
+struct Component {
+    ComponentVTable *vtable;
+};
+
+struct ComponentVTable {
+    MsvcReleaseModeXString *(*type_name)(Component *thiss, MsvcReleaseModeXString *p_name);
+    uint64_t (*type_id)();
+    // much more...
+};
+// golden value from RTTI
+// static_assert(sizeof(ComponentVTable) == 0xe0);
+
+struct HouseCat : Component {
+    char _8[4];
+    char _c[1];
+    char _d[1];
+    char _e[2];
+    char _10[1];
+    char _11[7];
+    char _18[8];
+    char _20[8];
+    char _28[8];
+    char _30[8];
+    char _38[4];
+    char _3c[4];
+    char _40[2];
+    char _42[6];
+    char _48[4];
+    char _4c[4];
+    char _50[8];
+    char _58[4];
+    char _5c[4];
+    char _60[8];
+    char _68[8];
+    char _70[8];
+    char _78[4];
+    char _7c[4];
+    int64_t sql_key;
+    //...
+};
+// golden value from ctor/memset
+// static_assert(sizeof(HouseCat) == 0x118);
+
 struct Scene {
-    char _0[0x40];
+    char _0[0x18];
+    SomeSimpleVector<Component *> *components;
+    void *field_20;
+    char _28[0x18];
     char _40[0x40];
     char _80[0x40];
     char _c0[0x40];
