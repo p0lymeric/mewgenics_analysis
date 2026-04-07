@@ -72,7 +72,7 @@ bool on_attach() {
     D::info("Executable SHA-256: {}\n", G.exe_actual_sha256.has_value() ? hash256bit_to_string(G.exe_actual_sha256.value()) : "<unknown>");
 
     // Try to install function hooks
-    if(!SFunctionHookRegistry::install_hooks(host_exec_base_va)) {
+    if(!SFunctionHookRegistry::install_hooks(host_exec_base_va, EFunctionHookProvider::Detours)) {
         // we f'd around and found out...
 
         // if hook installation failed, call TerminateProcess

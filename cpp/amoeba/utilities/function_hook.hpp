@@ -1,16 +1,19 @@
 #pragma once
 
-// Use Detours function hook implementation instead of MinHook
-#define USE_DETOURS_HOOK_IMPL
+// Support function hooking via MinHook
+// #define SUPPORT_MINHOOK_HOOK_IMPL
+// Support function hooking via Detours
+#define SUPPORT_DETOURS_HOOK_IMPL
 
 #include <vector>
 
 #include <windows.h>
 
-#ifdef USE_DETOURS_HOOK_IMPL
-#include "detours.h"
-#else
+#ifdef SUPPORT_MINHOOK_HOOK_IMPL
 #include "MinHook.h"
+#endif
+#ifdef SUPPORT_DETOURS_HOOK_IMPL
+#include "detours.h"
 #endif
 
 // Wraps much of the boilerplate and declarations required
@@ -34,26 +37,16 @@
     ProcFunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), true> name##_hook(lp_proc_name, &name##_detour); \
     ret_type call_conv name##_detour(__VA_ARGS__)
 
-// Makes a hook that will be managed independently from FunctionHookRegistry
-#define MAKE_HOOK_UNREGISTERED(address, ret_type, call_conv, name, ...) \
-    ret_type call_conv name##_detour(__VA_ARGS__); \
-    RvaFunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), false> name##_hook(address, &name##_detour); \
-    ret_type call_conv name##_detour(__VA_ARGS__)
-
-#define MAKE_VHOOK_UNREGISTERED(fp, ret_type, call_conv, name, ...) \
-    ret_type call_conv name##_detour(__VA_ARGS__); \
-    VaFunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), false> name##_hook(fp, &name##_detour); \
-    ret_type call_conv name##_detour(__VA_ARGS__)
-
-#define MAKE_PHOOK_UNREGISTERED(lp_proc_name, ret_type, call_conv, name, ...) \
-    ret_type call_conv name##_detour(__VA_ARGS__); \
-    ProcFunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), false> name##_hook(lp_proc_name, &name##_detour); \
-    ret_type call_conv name##_detour(__VA_ARGS__)
+enum EFunctionHookProvider {
+    Uninstalled,
+    MinHook,
+    Detours,
+};
 
 class IFunctionHookDescriptor {
 public:
-    virtual bool install(uintptr_t offset) = 0;
-    virtual bool uninstall() = 0;
+    virtual bool install(uintptr_t offset, EFunctionHookProvider api_provider) = 0;
+    virtual bool uninstall(EFunctionHookProvider api_provider) = 0;
 };
 
 class SFunctionHookRegistry {
@@ -65,80 +58,125 @@ public:
         return registry;
     }
 
-    static bool& installed() {
-        static bool installed = false;
-        return installed;
+    static EFunctionHookProvider& get_api_provider() {
+        static EFunctionHookProvider provider = EFunctionHookProvider::Uninstalled;
+        return provider;
     }
 
-    static bool install_hooks(uintptr_t host_exec_base_va) {
-        if(!SFunctionHookRegistry::installed()) {
-            #ifdef USE_DETOURS_HOOK_IMPL
-            if(DetourTransactionBegin() != NO_ERROR) {
-                return false;
+    static bool install_hooks(uintptr_t host_exec_base_va, EFunctionHookProvider api_provider = EFunctionHookProvider::Detours) {
+        // SFunctionHookRegistry will call any one-time init functions
+        if(SFunctionHookRegistry::get_api_provider() == EFunctionHookProvider::Uninstalled) {
+            // API presence check/init/transaction begin
+            switch(api_provider) {
+                case MinHook:
+                    #ifdef SUPPORT_MINHOOK_HOOK_IMPL
+                    if(MH_Initialize() != MH_OK) {
+                        return false;
+                    }
+                    #else
+                    return false;
+                    #endif
+                    break;
+                case Detours:
+                    #ifdef SUPPORT_DETOURS_HOOK_IMPL
+                    if(DetourTransactionBegin() != NO_ERROR) {
+                        return false;
+                    }
+                    if(DetourUpdateThread(GetCurrentThread()) != NO_ERROR) {
+                        return false;
+                    }
+                    #else
+                    return false;
+                    #endif
+                    break;
+                default:
+                    // invalid enum level (EFunctionHookProvider::Uninstalled is handled by if stmt)
+                    return false;
+                    break;
             }
 
-            if(DetourUpdateThread(GetCurrentThread()) != NO_ERROR) {
-                return false;
-            }
-            #else
-            if(MH_Initialize() != MH_OK) {
-                return false;
-            }
-            #endif
-
+            // Install each hook
             for(auto hook: SFunctionHookRegistry::get_registry()) {
-                if (!hook->install(host_exec_base_va)) {
+                if (!hook->install(host_exec_base_va, api_provider)) {
                     return false;
                 }
             }
 
-            #ifdef USE_DETOURS_HOOK_IMPL
-            if(DetourTransactionCommit() != NO_ERROR) {
-                return false;
+            // API transaction end/enable
+            switch(api_provider) {
+                case MinHook:
+                    #ifdef SUPPORT_MINHOOK_HOOK_IMPL
+                    if(MH_EnableHook(MH_ALL_HOOKS) != MH_OK) {
+                        return false;
+                    }
+                    #endif
+                    break;
+                case Detours:
+                    #ifdef SUPPORT_DETOURS_HOOK_IMPL
+                    if(DetourTransactionCommit() != NO_ERROR) {
+                        return false;
+                    }
+                    #endif
+                    break;
+                default:
+                    // untraversable
+                    return false;
+                    break;
             }
-            #else
-            if(MH_EnableHook(MH_ALL_HOOKS) != MH_OK) {
-                return false;
-            }
-            #endif
         }
 
-        SFunctionHookRegistry::installed() = true;
+        SFunctionHookRegistry::get_api_provider() = api_provider;
         return true;
     }
 
     static bool uninstall_hooks() {
         // Detours will return a failure code if zero items are queued in a transaction
-        // we won't try to start a transaction if we know we have nothing to uninstall
-        if(SFunctionHookRegistry::installed()) {
-            #ifdef USE_DETOURS_HOOK_IMPL
-            if(DetourTransactionBegin() != NO_ERROR) {
-                return false;
-            }
-
-            if(DetourUpdateThread(GetCurrentThread()) != NO_ERROR) {
-                return false;
-            }
-
-            for(auto hook: SFunctionHookRegistry::get_registry()) {
-                if (!hook->uninstall()) {
+        // we will fast abort when we know we have nothing to uninstall
+        if(SFunctionHookRegistry::get_api_provider() != EFunctionHookProvider::Uninstalled) {
+            switch(SFunctionHookRegistry::get_api_provider()) {
+                case MinHook:
+                    #ifdef SUPPORT_MINHOOK_HOOK_IMPL
+                    // MinHook disables and removes hooks as part of uninit
+                    // It keeps an internal list so there is no need to iterate ourselves
+                    if(MH_Uninitialize() != MH_OK) {
+                        return false;
+                    }
+                    #else
                     return false;
-                }
-            }
+                    #endif
+                    break;
+                case Detours:
+                    #ifdef SUPPORT_DETOURS_HOOK_IMPL
+                    if(DetourTransactionBegin() != NO_ERROR) {
+                        return false;
+                    }
 
-            if(DetourTransactionCommit() != NO_ERROR) {
-                return false;
+                    if(DetourUpdateThread(GetCurrentThread()) != NO_ERROR) {
+                        return false;
+                    }
+
+                    for(auto hook: SFunctionHookRegistry::get_registry()) {
+                        if (!hook->uninstall(SFunctionHookRegistry::get_api_provider())) {
+                            return false;
+                        }
+                    }
+
+                    if(DetourTransactionCommit() != NO_ERROR) {
+                        return false;
+                    }
+                    #else
+                    return false;
+                    #endif
+
+                    break;
+                default:
+                    // invalid enum level (EFunctionHookProvider::Uninstalled is handled by if stmt)
+                    return false;
+                    break;
             }
-            #else
-            // MinHook disables and removes hooks as part of uninit
-            // It keeps an internal list so there is no need to iterate ourselves
-            if(MH_Uninitialize() != MH_OK) {
-                return false;
-            }
-            #endif
         }
 
-        SFunctionHookRegistry::installed() = false;
+        SFunctionHookRegistry::get_api_provider() = EFunctionHookProvider::Uninstalled;
         return true;
     }
 };
@@ -163,37 +201,70 @@ public:
 
     virtual FP calculate_target(uintptr_t offset) = 0;
 
-    bool install(uintptr_t offset) override {
+    bool install(uintptr_t offset, EFunctionHookProvider api_provider) override {
         this->target = this->calculate_target(offset);
         if(this->target == nullptr) {
             // e.g. if GetProcAddress were to fail
             return false;
         }
-        #ifdef USE_DETOURS_HOOK_IMPL
-        this->orig = this->target;
-        if (DetourAttach(reinterpret_cast<PVOID *>(&this->orig), reinterpret_cast<PVOID>(this->detour)) != NO_ERROR) {
-            return false;
+
+        switch(api_provider) {
+            case MinHook:
+                #ifdef SUPPORT_MINHOOK_HOOK_IMPL
+                if(MH_CreateHook(reinterpret_cast<LPVOID>(this->target), reinterpret_cast<LPVOID>(this->detour), reinterpret_cast<LPVOID *>(&this->orig)) != MH_OK) {
+                    // ppOriginal is only written if hooking succeeded
+                    return false;
+                }
+                #else
+                return false;
+                #endif
+                break;
+            case Detours:
+                #ifdef SUPPORT_DETOURS_HOOK_IMPL
+                this->orig = this->target;
+                if (DetourAttach(reinterpret_cast<PVOID *>(&this->orig), reinterpret_cast<PVOID>(this->detour)) != NO_ERROR) {
+                    return false;
+                }
+                #else
+                return false;
+                #endif
+                break;
+            default:
+                // invalid enum level or EFunctionHookProvider::Uninstalled
+                return false;
+                break;
         }
-        #else
-        if(MH_CreateHook(reinterpret_cast<LPVOID>(this->target), reinterpret_cast<LPVOID>(this->detour), reinterpret_cast<LPVOID *>(&this->orig)) != MH_OK) {
-            // ppOriginal is only written if hooking succeeded
-            return false;
-        }
-        #endif
+
         return true;
     }
 
-    bool uninstall() override {
-        #ifdef USE_DETOURS_HOOK_IMPL
-        // &this->orig is captured and isn't written back until DetourTransactionCommit... very evil
-        if (DetourDetach(reinterpret_cast<PVOID *>(&this->orig), reinterpret_cast<PVOID>(this->detour)) != NO_ERROR) {
-            return false;
+    bool uninstall(EFunctionHookProvider api_provider) override {
+        switch(api_provider) {
+            case MinHook:
+                #ifdef SUPPORT_MINHOOK_HOOK_IMPL
+                if(MH_RemoveHook(reinterpret_cast<LPVOID>(this->target)) != MH_OK) {
+                    return false;
+                }
+                #else
+                return false;
+                #endif
+                break;
+            case Detours:
+                #ifdef SUPPORT_DETOURS_HOOK_IMPL
+                // &this->orig is captured and isn't written back until DetourTransactionCommit... very evil
+                if (DetourDetach(reinterpret_cast<PVOID *>(&this->orig), reinterpret_cast<PVOID>(this->detour)) != NO_ERROR) {
+                    return false;
+                }
+                #else
+                return false;
+                #endif
+                break;
+            default:
+                // invalid enum level or EFunctionHookProvider::Uninstalled
+                return false;
+                break;
         }
-        #else
-        if(MH_RemoveHook(reinterpret_cast<LPVOID>(this->target)) != MH_OK) {
-            return false;
-        }
-        #endif
+
         return true;
     }
 };

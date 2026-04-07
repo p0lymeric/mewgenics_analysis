@@ -537,10 +537,10 @@ struct HouseCat : Component {
     char _78[4];
     char _7c[4];
     int64_t sql_key;
-    //...
+    char _padding[140];
 };
 // golden value from ctor/memset
-// static_assert(sizeof(HouseCat) == 0x118);
+static_assert(sizeof(HouseCat) == 0x118);
 
 struct Scene {
     char _0[0x18];
@@ -642,3 +642,40 @@ static_assert(sizeof(ByteStream) == 0x150);
 struct Xoshiro256pContext {
     uint64_t ctx[4];
 };
+
+struct ComponentPoolChunk {
+    void *p_base;
+    // NB only nodes with successors have a valid next pointer, the tail chunk holds a garbage not-necessarily-null value
+    ComponentPoolChunk *next;
+};
+
+// this is sized correctly for stepping through a chunk, so long as T is also sized correctly
+template<typename T>
+struct ComponentPoolSlot {
+    // only incremented by the free function
+    uint64_t generation;
+    union {
+        ComponentPoolSlot<T> *next_free;
+        T data;
+    } u;
+};
+
+template<typename T>
+struct ComponentPool {
+    size_t chunk_size;
+    // allocations commit slot_size * min_slots_per_allocation bytes, rounded up to GetPageSize page granularity
+    size_t min_slots_per_allocation;
+    size_t slot_size; // == sizeof(T)
+    // zero-init. the first allocation will also reserve the first chunk
+    void *tail_chunk_allocated_end; // ends on a page boundary
+    void *tail_chunk_reservation_end; // == tail_chunk->p_base + chunk_size
+    void *tail_chunk_used_end; // tracks water level until the next allocation
+    ComponentPoolChunk *head_chunk;
+    ComponentPoolChunk *tail_chunk;
+    ComponentPoolSlot<T> *p_next_free; // nullptr if the free list is empty
+    // where we're going, we don't need no protection!
+    /* MsvcMutex */char alloc_free_lock[80];
+    // only set by the free function, never unset or sampled
+    bool probably_free_list_had_forward_link_flag;
+};
+static_assert(sizeof(ComponentPool<void>) == 0xa0);

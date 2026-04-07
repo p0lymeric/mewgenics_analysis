@@ -46,6 +46,7 @@ inline constexpr uintptr_t ADDRESS_maybe_spawn_stray_immediate = 0x1f3a70; // WA
 
 // Data offsets are encoded as relative VAs
 inline constexpr uintptr_t DATAOFF_glaiel__MewDirector__p_singleton = 0x13c7bd0; // find this by recursively tracing callers of glaiel__SerializeCatData; at least one root caller will pass a global reference in arg1
+inline constexpr uintptr_t DATAOFF_maybe_housecat_component_pool = 0x13d8b40; // find this by tracing maybe_spawn_stray_immediate; it is the first global referenced
 
 // TLS variable offsets are encoded relative to the base VA of their TLS slot
 inline constexpr uintptr_t TLS0OFF_xoshiro256p_rng_context = 0x178; // find this by tracing glaiel__CatData_unk_init; TLS fetch and RNG update are performed near the beginning of the function

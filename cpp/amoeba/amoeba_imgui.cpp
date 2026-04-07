@@ -1026,6 +1026,86 @@ void show_data_explorer_window() {
             }
             ImGui::TreePop();
         }
+
+        if(ImGui::TreeNode("Component pools")) {
+            ComponentPool<HouseCat> *housecat_pool = reinterpret_cast<ComponentPool<HouseCat> *>(DATAOFF_maybe_housecat_component_pool + G.host_exec_base_va);
+            if(ImGui::TreeNode("HouseCat")) {
+                ImguiTextStdFmt("Chunk size: {} B", housecat_pool->chunk_size);
+                ImguiTextStdFmt("Slots per allocation: {}", housecat_pool->min_slots_per_allocation);
+                ImguiTextStdFmt("Slot size (sizeof(HouseCat) + 8 B): {} B", housecat_pool->slot_size);
+                ImguiTextStdFmt("Tail chunk allocation end: {:p}", housecat_pool->tail_chunk_allocated_end);
+                ImguiTextStdFmt("Tail chunk reservation end: {:p}", housecat_pool->tail_chunk_reservation_end);
+                ImguiTextStdFmt("Tail chunk used end: {:p}", housecat_pool->tail_chunk_used_end);
+                ImguiTextStdFmt("Next free slot: {:p}", reinterpret_cast<void *>(housecat_pool->p_next_free));
+                ImguiTextStdFmt("Free list had forward link?: {}", housecat_pool->probably_free_list_had_forward_link_flag);
+
+                if(ImGui::TreeNode("Chunk list")) {
+                    if(ImGui::BeginTable("table1", 2)) {
+                        ImGui::TableSetupColumn("p_descriptor", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                        ImGui::TableSetupColumn("p_base", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                        ImGui::TableHeadersRow();
+                        auto p_descriptor = housecat_pool->head_chunk;
+                        while(p_descriptor != nullptr) {
+                            ImGui::TableNextRow();
+                            ImGui::TableNextColumn();
+                            ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(p_descriptor));
+                            ImGui::TableNextColumn();
+                            ImguiTextStdFmt("{:p}", p_descriptor->p_base);
+                            // the current chunk's next pointer isn't zero-initialized, grrr...
+                            if(p_descriptor == housecat_pool->tail_chunk) {
+                                break;
+                            }
+                            p_descriptor = p_descriptor->next;
+                        }
+                        ImGui::EndTable();
+                    }
+                    ImGui::TreePop();
+                }
+                if(ImGui::TreeNode("Free list")) {
+                    if(ImGui::BeginTable("table1", 1)) {
+                        ImGui::TableSetupColumn("p_slot", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                        ImGui::TableHeadersRow();
+                        auto p_free = housecat_pool->p_next_free;
+                        while(p_free != nullptr) {
+                            ImGui::TableNextRow();
+                            ImGui::TableNextColumn();
+                            ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(p_free));
+                            p_free = p_free->u.next_free;
+                        }
+                        ImGui::EndTable();
+                    }
+                    ImGui::TreePop();
+                }
+                // can theoretically walk other chunks, but would probably need a clipper to view several million cats
+                if(ImGui::TreeNode("Allocated slots (tail chunk)")) {
+                    if(ImGui::BeginTable("table1", 3)) {
+                        ImGui::TableSetupColumn("p_slot", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                        ImGui::TableSetupColumn("generation", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                        ImGui::TableSetupColumn("data_first_qword", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                        ImGui::TableHeadersRow();
+                        char * p_first_slot = reinterpret_cast<char *>(housecat_pool->tail_chunk_reservation_end) - housecat_pool->chunk_size;
+                        for(
+                            auto p_slot = reinterpret_cast<ComponentPoolSlot<HouseCat> *>(p_first_slot);
+                            p_slot < housecat_pool->tail_chunk_used_end;
+                            p_slot++
+                        ) {
+                            ImGui::TableNextRow();
+                            ImGui::TableNextColumn();
+                            ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(p_slot));
+                            ImGui::TableNextColumn();
+                            ImguiTextStdFmt("0x{:016x}", p_slot->generation);
+                            ImGui::TableNextColumn();
+                            // read the first qword of data through the next_free data element
+                            ImguiTextStdFmt("0x{:016x}", reinterpret_cast<uint64_t>(p_slot->u.next_free));
+                        }
+                        ImGui::EndTable();
+                    }
+                    ImGui::TreePop();
+                }
+                ImGui::TreePop();
+            }
+            ImGui::TreePop();
+        }
     }
     ImGui::End();
 }
