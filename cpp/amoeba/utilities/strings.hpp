@@ -29,17 +29,17 @@ inline std::string convert_filesystem_path_to_utf8_string(std::filesystem::path 
     return convert_utf16_wstring_to_utf8_string(path.wstring());
 }
 
-inline std::filesystem::path get_process_exe_path() {
+inline std::filesystem::path get_module_file_path(HMODULE module) {
     // should cut off in 7 generations of the doubling loop with MAX_PATH == 260
     const DWORD cutoff = 64 * 1024;
-    std::wstring exe_path;
+    std::wstring file_path;
     // nothing to see here folks, just very normal Windows API things to (potentially) support long paths
     for(size_t buf_size = MAX_PATH; buf_size < cutoff; buf_size *= 2) {
-        exe_path.resize(buf_size);
-        DWORD written_wchars_excl_nullterm = GetModuleFileNameW(NULL, exe_path.data(), static_cast<DWORD>(exe_path.size()));
+        file_path.resize(buf_size);
+        DWORD written_wchars_excl_nullterm = GetModuleFileNameW(module, file_path.data(), static_cast<DWORD>(file_path.size()));
         if(written_wchars_excl_nullterm < buf_size) {
-            exe_path.resize(written_wchars_excl_nullterm);
-            return exe_path;
+            file_path.resize(written_wchars_excl_nullterm);
+            return file_path;
         }
     }
     return std::filesystem::path();

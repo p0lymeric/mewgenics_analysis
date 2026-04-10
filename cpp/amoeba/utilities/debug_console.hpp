@@ -1,23 +1,31 @@
 #pragma once
 
-// Opens a console on the host process via AllocConsole and uses the host's stdout for writing debug prints
-// #define SHOW_WIN32_CONSOLE
+// Open a console on the host process via AllocConsole for writing debug prints
+// #define ENABLE_CONSOLE_LOGGING
+// Write debug prints to Mewjector's shared log file, if Mewjector is present
+#define ENABLE_MEWJECTOR_LOGGING
 
 #include "transaction_logger.hpp"
+#ifdef ENABLE_CONSOLE_LOGGING
 #include "utilities/strings.hpp"
+#endif
 #include "utilities/ringbuffer.hpp"
+#ifdef ENABLE_MEWJECTOR_LOGGING
+#include "utilities/mewjector_support.h"
+#endif
 
 #include <cstdint>
 #include <string>
 #include <format>
 #include <chrono>
+
 #include <windows.h>
 
 // Debug printing facilities.
 //
 // polymeric 2026
 
-#ifdef SHOW_WIN32_CONSOLE
+#ifdef ENABLE_CONSOLE_LOGGING
 #define ALLOC_CONSOLE() AllocConsole()
 #define FREE_CONSOLE() FreeConsole()
 #else
@@ -54,21 +62,18 @@ public:
         return d;
     }
 
-    static void printmb(std::string_view multibyte) {
-        std::wstring wide = convert_utf8_string_to_utf16_wstring(multibyte);
-        WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE), wide.data(), static_cast<DWORD>(wide.length()), NULL, NULL);
-    }
-
     template<class... Args>
     void log(DebugConsoleLevel level, std::format_string<Args...> fmt, Args&&... args) {
         std::string multibyte = std::format(fmt, std::forward<Args>(args)...);
         auto now = std::chrono::system_clock::now();
-        #ifdef SHOW_WIN32_CONSOLE
+        #ifdef ENABLE_CONSOLE_LOGGING
+        std::wstring wide;
         if(level == DebugConsoleLevel::Chain) {
-            printmb(multibyte);
+            wide = convert_utf8_string_to_utf16_wstring(multibyte);
         } else {
-            printmb(std::format("amoeba - {:%F %T} - {}", now, multibyte));
+            wide = convert_utf8_string_to_utf16_wstring(std::format("amoeba - {:%F %T} - {}", now, multibyte));
         }
+        WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE), wide.data(), static_cast<DWORD>(wide.length()), NULL, NULL);
         #endif
         if(this->tlogger != nullptr) {
             this->tlogger->select_vsid(tlogger_vsid_info);
@@ -106,6 +111,11 @@ public:
                 }
             }
         }
+        #ifdef ENABLE_MEWJECTOR_LOGGING
+        if(const MewjectorAPI *mj = MJ_SUPPORT_GetAPI(); mj != NULL) {
+            mj->Log("polymeric.amoeba", multibyte.c_str());
+        }
+        #endif
     }
 
     static void install_tlogger(TransactionLogger *tlogger, uint32_t tlogger_vsid_info) {
@@ -163,3 +173,6 @@ private:
     D(D&&) = delete;
     D& operator=(D&&) = delete;
 };
+
+#undef ENABLE_CONSOLE_LOGGING
+#undef ENABLE_MEWJECTOR_LOGGING

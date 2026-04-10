@@ -69,12 +69,14 @@ enum class FullRecordSTypes : uint32_t {
 
 class TransactionLogger {
 public:
-    TransactionLogger(std::filesystem::path file_path, bool use_lz4);
+    TransactionLogger();
     ~TransactionLogger();
 
-    void open();
+    void open(std::filesystem::path file_path, bool use_lz4);
     void close();
     void flush();
+
+    bool is_opened();
 
     void reset(bool write_full = false);
     void select_vsid(uint32_t vsid, bool write_full = false);
@@ -91,7 +93,7 @@ public:
 
 private:
     const size_t CHUNK_SIZE = 64 * 1024;
-    std::filesystem::path file_path;
+    std::filesystem::path opened_path;
     std::ofstream file;
     uint8_t format;
     std::vector<char> stream_buffer;

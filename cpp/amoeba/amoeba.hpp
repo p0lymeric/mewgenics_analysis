@@ -71,13 +71,23 @@ enum TlogVsid : uint32_t {
 };
 
 struct GlobalContext {
-    // This will necessarily be resolved if sampled inside a hook
+    // amoeba.dll offset.
     uintptr_t dll_base_va;
-    // This will necessarily be resolved if sampled inside a hook
+
+    // Mewgenics.exe offset.
     uintptr_t host_exec_base_va;
-    // TODO since this class isn't RAII anymore, don't need to dynamically allocate
-    TransactionLogger *tlogger;
-    Sqlite3ConnWrapper sqlite3;
+
+    // Whether it is permissible for the dll to self-eject
+    // (false if the dll cannot self-uninstall its hooks)
+    bool dll_can_self_eject;
+
+    // Mewgenics.exe hash.
     std::optional<Hash256Bit> exe_actual_sha256;
     bool exe_hash_mismatch_detected;
+
+    // Binary file logger. Normally inactive but can be enabled for logging.
+    TransactionLogger tlogger;
+
+    // sqlite3 connection wrapper.
+    Sqlite3ConnWrapper sqlite3;
 };

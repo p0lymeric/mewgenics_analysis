@@ -40,6 +40,11 @@ This repository gratefully uses the following libraries.
   * `LibTomCrypt, modular cryptographic library -- Tom St Denis`
   * Unlicense
   * https://github.com/libtom/libtomcrypt/blob/develop/LICENSE
+* Mewjector
+  * Used if present for coordinated function hooking and logging.
+  * `Copyright (c) 2026 Mewjector Contributors`
+  * MIT License
+  * https://github.com/githubuser508/mewjector/blob/main/LICENSE
 
 #### Integrated
 * GON

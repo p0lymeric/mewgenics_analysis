@@ -271,7 +271,7 @@ std::unordered_map<int64_t, ManagedCatData> load_all_cats() {
 // Hook this function so that we can suppress name history updates when we manually call the breed function
 static bool glaiel__CatData_unk_init_register_in_name_history_override = false;
 static bool glaiel__CatData_unk_init_register_in_name_history_val = false;
-MAKE_HOOK(ADDRESS_glaiel__CatData_unk_init,
+MAKE_HOOK(0, ADDRESS_glaiel__CatData_unk_init,
     void, __cdecl, glaiel__CatData_unk_init,
     CatData *p_cat, void *ofstream_eliminated_by_opt, int32_t sex, bool register_in_name_history
 ) {

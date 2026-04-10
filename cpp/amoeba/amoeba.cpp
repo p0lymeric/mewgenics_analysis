@@ -1,6 +1,7 @@
 #include "amoeba.hpp"
 #include "utilities/debug_console.hpp"
 #include "utilities/function_hook.hpp"
+#include "utilities/strings.hpp"
 
 #include <filesystem>
 
@@ -17,8 +18,6 @@
 // polymeric 2026
 
 GlobalContext G;
-
-const std::filesystem::path TLOG_FILE_LOCATION = LR"(C:\Games\test.tlog.lz4)";
 
 #ifdef __SANITIZE_ADDRESS__
 // Nice to meet you! I'm the ADDRESS-SANITIZER, your trusty memory use auditor!
@@ -39,44 +38,50 @@ bool on_attach() {
     G.host_exec_base_va = host_exec_base_va;
 
     // Calculate the SHA-256 digest of the executable
-    std::filesystem::path exe_path = get_process_exe_path();
+    std::filesystem::path exe_path = get_module_file_path(NULL);
     G.exe_actual_sha256 = sha256_file(exe_path);
     if(G.exe_actual_sha256.has_value()) {
         G.exe_hash_mismatch_detected = (G.exe_actual_sha256.value() != EXE_SHA256);
     }
 
-    // Instantiate the transaction logger
-    G.tlogger = new TransactionLogger(TLOG_FILE_LOCATION, true);
-    // open its backing file for write
-    // TODO add option to enable transaction logging in imgui interface
+    // Register the ASAN reporting callback
     #ifdef __SANITIZE_ADDRESS__
     __asan_set_error_report_callback(&asan_error_report_callback);
-    // always open tlogger if we have ASAN enabled as it's currently our only method for logging to disk
-    G.tlogger->open();
     #endif
-    // and write a schema hint to the meta channel
-    G.tlogger->select_vsid(TlogVsid::Meta);
-    G.tlogger->set_timestamp_now();
-    G.tlogger->write_int64(TLOG_SCHEMA_VERSION_HINT);
 
     // Create a Win32 console window with which to print log messages
     ALLOC_CONSOLE();
     // Link the transaction logger with the debug console backend
-    D::install_tlogger(G.tlogger, TlogVsid::Log);
+    D::install_tlogger(&G.tlogger, TlogVsid::Log);
     // Enable the debug console internal message buffer
-    D::enable_internal_buffer(1000, 1000);
+    D::enable_internal_buffer(10000, 1000);
 
     D::info("DllMain DLL_PROCESS_ATTACH\n");
     D::info("Hook base VA: 0x{:x}\n", G.dll_base_va);
     D::info("Executable base VA: 0x{:x}\n", host_exec_base_va);
     D::info("Executable SHA-256: {}\n", G.exe_actual_sha256.has_value() ? hash256bit_to_string(G.exe_actual_sha256.value()) : "<unknown>");
 
-    // Try to install function hooks
-    if(!SFunctionHookRegistry::install_hooks(host_exec_base_va, EFunctionHookProvider::Detours)) {
-        // we f'd around and found out...
+    // D::info("Mewgenics.exe path {}", get_module_file_path(NULL).string());
+    // D::info("amoeba.dll path {}", get_module_file_path(reinterpret_cast<HMODULE>(G.dll_base_va)).string());
 
-        // if hook installation failed, call TerminateProcess
-        // instead of conventional exit
+    // Try to install function hooks
+    if(SFunctionHookRegistry::api_is_present(EFunctionHookProvider::Mewjector)) {
+        // Use Mewjector if present for coordinated hooking
+        if(!SFunctionHookRegistry::install_hooks(host_exec_base_va, EFunctionHookProvider::Mewjector, 0)) {
+            // if hook installation failed, call TerminateProcess instead of conventional exit
+            return false;
+        }
+        G.dll_can_self_eject = false;
+    } else {
+        if(!SFunctionHookRegistry::install_hooks(host_exec_base_va, EFunctionHookProvider::Detours, 0)) {
+            // if hook installation failed, call TerminateProcess instead of conventional exit
+            return false;
+        }
+        G.dll_can_self_eject = true;
+    }
+    // These hooks bind to RIP-relative jumps, which Mewjector does not currently support
+    if(!SFunctionHookRegistry::install_hooks(host_exec_base_va, EFunctionHookProvider::Detours, 1)) {
+        // if hook installation failed, call TerminateProcess instead of conventional exit
         return false;
     }
     return true;
@@ -86,7 +91,7 @@ bool on_unload_detach() {
     D::info("DllMain DLL_PROCESS_DETACH (unload)\n");
     // try to gracefully remove our hooks if this dll
     // was unloaded outside a process exit
-    if(!SFunctionHookRegistry::uninstall_hooks()) {
+    if(!SFunctionHookRegistry::uninstall_hooks_all()) {
         // if hook uninstallation failed, call TerminateProcess
         return false;
     }
@@ -99,11 +104,11 @@ bool on_exitprocess_detach() {
     return true;
 }
 
-void final_rites(bool is_detach, bool terminate_process) {
+void final_rites(bool is_detach, bool cause_is_error) {
     // If we are gracefully detaching, close the console window.
     // Otherwise leave the console open, if only for the split second that a
     // diagnostic print could flicker on screen
-    if(terminate_process) {
+    if(cause_is_error) {
         if(is_detach) {
             D::error("An unrecoverable error occurred during dll uninitialization.\n");
         } else {
@@ -122,13 +127,13 @@ void final_rites(bool is_detach, bool terminate_process) {
     // Always finalize tlogger before exit, even if we plan to terminate the process
     D::uninstall_tlogger();
     // write reset to indicate stream end
-    G.tlogger->reset();
+    G.tlogger.reset();
     // then flush and close the log
-    delete G.tlogger;
+    G.tlogger.close();
 }
 
 void do_process_termination() {
-    final_rites(true, true);
+    final_rites(true, false);
     TerminateProcess(GetCurrentProcess(), 1);
 }
 
@@ -163,7 +168,7 @@ void initiate_dll_eject() {
 
     // Uninstall hooks now to guarantee no future call can enter this DLL after we leave
     // (assuming the hooked routines can only be executed by one thread)
-    if(!SFunctionHookRegistry::uninstall_hooks()) {
+    if(!SFunctionHookRegistry::uninstall_hooks_all()) {
         // if hook uninstallation failed, call TerminateProcess
         do_process_termination();
     }

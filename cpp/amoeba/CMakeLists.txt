@@ -5,11 +5,17 @@ project(amoeba)
 # Build target names
 set(HOOK_NAME amoeba)
 
-# Set language mode
+# Set language mode (C++)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # possibly does nothing with MSVC; permissive- is set by std:c++20
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Set language mode (C)
+set(CMAKE_C_STANDARD 17)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+# possibly does nothing with MSVC
+set(CMAKE_C_EXTENSIONS OFF)
 
 # Notes for using ASAN:
 # 1. Successfully compiled with MSVC. Had linker errors with ClangCL.
@@ -42,6 +48,7 @@ add_library(${HOOK_NAME} SHARED
     amoeba_imgui.cpp
     utilities/transaction_logger.cpp
     utilities/sqlite3_conn_wrapper.cpp
+    utilities/mewjector_support.c
     ffi/cat_factory.cpp
     ffi/experimental.cpp
 )
@@ -77,6 +84,7 @@ target_link_libraries(${HOOK_NAME} PRIVATE
     Mewgenics_exports
     sqlite3
     libtomcrypt
+    mewjector
 )
 
 install(TARGETS ${TARGET_NAME} ${HOOK_NAME} RUNTIME DESTINATION bin)

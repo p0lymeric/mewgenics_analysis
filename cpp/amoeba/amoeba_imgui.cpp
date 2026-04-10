@@ -43,6 +43,8 @@ struct ImguiPrivateState {
     bool show_debug_console = false;
     bool show_imgui_demo = false;
 
+    bool show_tlog_config = false;
+
     // save explorer
     std::unordered_map<int64_t, ManagedCatData> save_explorer_cats;
 };
@@ -87,17 +89,28 @@ void show_eject_confirmation_modal(bool signal) {
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     bool x_button = true;
     if(ImGui::BeginPopupModal("Eject?", &x_button, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImguiTextStdFmt("Really eject Amoeba?");
-        ImGui::Separator();
+        if(G.dll_can_self_eject) {
+            ImguiTextStdFmt("Really eject Amoeba?");
+            ImGui::Separator();
 
-        if(ImGui::Button("Yes", ImVec2(120, 0))) {
-            P.request_dll_eject = true;
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::SetItemDefaultFocus();
-        ImGui::SameLine();
-        if(ImGui::Button("No", ImVec2(120, 0)) || !x_button) {
-            ImGui::CloseCurrentPopup();
+            if(ImGui::Button("Yes", ImVec2(120, 0))) {
+                P.request_dll_eject = true;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SetItemDefaultFocus();
+            ImGui::SameLine();
+            if(ImGui::Button("No", ImVec2(120, 0)) || !x_button) {
+                ImGui::CloseCurrentPopup();
+            }
+        } else {
+            ImguiTextStdFmt("Amoeba cannot be safely ejected.");
+            ImguiTextStdFmt("To allow for ejection, Mewjector must not be present.");
+            ImGui::Separator();
+
+            ImGui::SetItemDefaultFocus();
+            if(ImGui::Button("Ok", ImVec2(120, 0)) || !x_button) {
+                ImGui::CloseCurrentPopup();
+            }
         }
         ImGui::EndPopup();
     }
@@ -185,6 +198,10 @@ void show_main_menu_bar() {
             ImGui::Separator();
             if(ImGui::MenuItem("Enable experimental widgets", NULL, &P.enable_experimental_widgets)) {}
             if(ImGui::MenuItem("Show debug console", NULL, &P.show_debug_console)) {}
+            ImGui::EndMenu();
+        }
+        if(ImGui::BeginMenu("Logging")) {
+            if(ImGui::MenuItem("Transaction logging", NULL, &P.show_tlog_config)) {}
             ImGui::EndMenu();
         }
         if(ImGui::BeginMenu("Help")) {
@@ -1658,6 +1675,42 @@ void show_save_explorer_window() {
     ImGui::End();
 }
 
+void show_tlog_config_window() {
+    if(!P.show_tlog_config) {
+        return;
+    }
+    ImVec2 viewport_size = ImGui::GetMainViewport()->Size;
+    ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
+    if(ImGui::Begin("Transaction logger", &P.show_save_explorer)) {
+        // good enough for most cases
+        static char file_path[512] = "amoeba.tlog.lz4";
+        bool enable_transaction_logging = G.tlogger.is_opened();
+        if(enable_transaction_logging) {
+            ImGui::BeginDisabled();
+        }
+        ImGui::InputText("File path", file_path, 512);
+        if(enable_transaction_logging) {
+            ImGui::EndDisabled();
+        }
+        ImGui::Checkbox("Enable transaction logging", &enable_transaction_logging);
+        if(G.tlogger.is_opened() && !enable_transaction_logging) {
+            G.tlogger.reset();
+            G.tlogger.close();
+        } else if(!G.tlogger.is_opened() && enable_transaction_logging) {
+            // Open the transaction logger's backing file for write
+            G.tlogger.open(std::filesystem::path(convert_utf8_string_to_utf16_wstring(file_path)), true);
+            // Write a schema hint to the meta channel
+            G.tlogger.select_vsid(TlogVsid::Meta);
+            G.tlogger.set_timestamp_now();
+            G.tlogger.write_int64(TLOG_SCHEMA_VERSION_HINT);
+        }
+        if(ImGui::Button("Flush to disk")) {
+            G.tlogger.flush();
+        }
+    }
+    ImGui::End();
+}
+
 void deinitialize_imgui() {
     if(P.initialized) {
         ImGui_ImplOpenGL3_Shutdown();
@@ -1666,7 +1719,7 @@ void deinitialize_imgui() {
     }
 }
 
-MAKE_PHOOK("SDL_GL_SwapWindow",
+MAKE_PHOOK(1, "SDL_GL_SwapWindow",
     bool, __cdecl, SDL_GL_SwapWindow,
     SDL_Window *window
 ) {
@@ -1705,6 +1758,7 @@ MAKE_PHOOK("SDL_GL_SwapWindow",
         show_data_explorer_window();
         show_save_explorer_window();
         show_debug_console_window();
+        show_tlog_config_window();
     }
 
     ImGui::Render();
@@ -1733,7 +1787,7 @@ MAKE_PHOOK("SDL_GL_SwapWindow",
     return result;
 }
 
-MAKE_PHOOK("SDL_PollEvent",
+MAKE_PHOOK(1, "SDL_PollEvent",
     bool, __cdecl, SDL_PollEvent,
     SDL_Event *event
 ) {

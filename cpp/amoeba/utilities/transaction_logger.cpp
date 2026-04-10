@@ -9,23 +9,24 @@
 //
 // polymeric 2026
 
-TransactionLogger::TransactionLogger(std::filesystem::path file_path, bool use_lz4) {
-    this->file_path = file_path;
+TransactionLogger::TransactionLogger() {
     this->lz4_preferences = LZ4F_INIT_PREFERENCES;
-    if(use_lz4) {
-        this->format = 1;
-    } else {
-        this->format = 0;
-    }
 }
 
 TransactionLogger::~TransactionLogger() {
     this->close();
 }
 
-void TransactionLogger::open() {
-    if(!this->file.is_open()) {
-        this->file = std::ofstream(this->file_path, std::ios::binary); // TODO can throw
+void TransactionLogger::open(std::filesystem::path file_path, bool use_lz4) {
+    if(!this->is_opened()) {
+        this->opened_path = file_path;
+        if(use_lz4) {
+            this->format = 1;
+        } else {
+            this->format = 0;
+        }
+
+        this->file = std::ofstream(this->opened_path, std::ios::binary); // TODO can throw
         this->stream_buffer.resize(this->CHUNK_SIZE);
         if(this->format == 1) {
             LZ4F_createCompressionContext(&this->lz4_cctx, LZ4F_VERSION); // TODO can fail
@@ -37,7 +38,7 @@ void TransactionLogger::open() {
 }
 
 void TransactionLogger::close() {
-    if(this->file.is_open()) {
+    if(this->is_opened()) {
         write_footer();
 
         if(this->format == 1) {
@@ -52,7 +53,7 @@ void TransactionLogger::close() {
 }
 
 void TransactionLogger::flush() {
-    if(this->file.is_open()) {
+    if(this->is_opened()) {
         if(this->format == 1) {
             size_t written_size = LZ4F_flush(this->lz4_cctx, this->compress_buffer.data(), this->compress_buffer.size(), nullptr);
             if(LZ4F_isError(written_size)) {
@@ -64,6 +65,10 @@ void TransactionLogger::flush() {
 
         this->file.flush();
     }
+}
+
+bool TransactionLogger::is_opened() {
+    return this->file.is_open();
 }
 
 void TransactionLogger::reset(bool write_full) {

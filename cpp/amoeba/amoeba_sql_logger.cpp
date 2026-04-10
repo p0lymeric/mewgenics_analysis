@@ -28,8 +28,8 @@ struct SqlLoggerPrivateState {
 static SqlLoggerPrivateState P;
 
 void write_db_to_log(std::string file_path) {
-    G.tlogger->select_vsid(TlogVsid::SaveData);
-    G.tlogger->set_timestamp_now();
+    G.tlogger.select_vsid(TlogVsid::SaveData);
+    G.tlogger.set_timestamp_now();
     #if defined(__clang__) && !defined(_MSC_VER)
     // libc++ does not implement clock_cast
     int64_t mtime = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -47,52 +47,52 @@ void write_db_to_log(std::string file_path) {
     #endif
     if constexpr(TLOG_SCHEMA_VERSION_HINT > 0) {
         // relative to Unix epoch
-        G.tlogger->write_int64(mtime);
+        G.tlogger.write_int64(mtime);
     } else {
         // relative to Windows FILETIME epoch
-        G.tlogger->write_int64(mtime + 11644473600000000);
+        G.tlogger.write_int64(mtime + 11644473600000000);
     }
-    G.tlogger->write_string(convert_filesystem_path_to_utf8_string(std::filesystem::path(file_path).filename()));
-    G.tlogger->write_blob_from_file(file_path);
+    G.tlogger.write_string(convert_filesystem_path_to_utf8_string(std::filesystem::path(file_path).filename()));
+    G.tlogger.write_blob_from_file(file_path);
 }
 
 void write_sql_to_log(std::string query, PodBufferPreallocated<SqlParam, 4> *params, std::string file_path) {
-    G.tlogger->select_vsid(TlogVsid::Sql);
-    G.tlogger->set_timestamp_now();
+    G.tlogger.select_vsid(TlogVsid::Sql);
+    G.tlogger.set_timestamp_now();
     if constexpr(TLOG_SCHEMA_VERSION_HINT > 0) {
-        G.tlogger->write_string(convert_filesystem_path_to_utf8_string(std::filesystem::path(file_path).filename()));
+        G.tlogger.write_string(convert_filesystem_path_to_utf8_string(std::filesystem::path(file_path).filename()));
     }
-    G.tlogger->write_int64(params->size);
-    G.tlogger->write_string(query);
+    G.tlogger.write_int64(params->size);
+    G.tlogger.write_string(query);
     for(const auto &param : *params) {
-        G.tlogger->write_string(param.name);
+        G.tlogger.write_string(param.name);
         switch(param.data.type) {
             case Blob:
-                G.tlogger->write_blob(param.data.value.as_blob_ptr, param.data.length);
+                G.tlogger.write_blob(param.data.value.as_blob_ptr, param.data.length);
                 break;
             case Text:
-                G.tlogger->write_string(param.data.value.as_c_str);
+                G.tlogger.write_string(param.data.value.as_c_str);
                 break;
             // case WText:
             //     s += std::format("L\"{}\"", param.data.value.as_wc_str);
             //     break;
             // case Integer32:
-            //     G.tlogger->write_int64(param.data.value.as_int);
+            //     G.tlogger.write_int64(param.data.value.as_int);
             //     break;
             case Integer:
-                G.tlogger->write_int64(param.data.value.as_int64);
+                G.tlogger.write_int64(param.data.value.as_int64);
                 break;
             case Real:
-                G.tlogger->write_double(param.data.value.as_double);
+                G.tlogger.write_double(param.data.value.as_double);
                 break;
             default:
-                G.tlogger->write_na();
+                G.tlogger.write_na();
                 break;
         }
     }
 }
 
-MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__BeginSave,
+MAKE_HOOK(0, ADDRESS_glaiel__SQLSaveFile__BeginSave,
     void, __cdecl, glaiel__SQLSaveFile__BeginSave,
     SQLSaveFile* thiss
 ) {
@@ -106,7 +106,7 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__BeginSave,
     glaiel__SQLSaveFile__BeginSave_hook.orig(thiss);
 }
 
-MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__EndSave,
+MAKE_HOOK(0, ADDRESS_glaiel__SQLSaveFile__EndSave,
     void, __cdecl, glaiel__SQLSaveFile__EndSave,
     SQLSaveFile* thiss
 ) {
@@ -123,7 +123,7 @@ MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__EndSave,
     }
 }
 
-MAKE_HOOK(ADDRESS_glaiel__SQLSaveFile__SQL,
+MAKE_HOOK(0, ADDRESS_glaiel__SQLSaveFile__SQL,
     void, __cdecl, glaiel__SQLSaveFile__SQL,
     SQLSaveFile *thiss, MsvcReleaseModeXString *ref_query, PodBufferPreallocated<SqlParam, 4> *params, MsvcFuncNoAlloc<glaiel__SQLSaveFile__SQL_CallableLayout1, void (sqlite3_stmt *p_stmt)> *ref_callback
 ) {
