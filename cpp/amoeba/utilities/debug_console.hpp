@@ -5,7 +5,7 @@
 // Write debug prints to Mewjector's shared log file, if Mewjector is present
 #define ENABLE_MEWJECTOR_LOGGING
 
-#include "transaction_logger.hpp"
+#include "utilities/transaction_logger.hpp"
 #ifdef ENABLE_CONSOLE_LOGGING
 #include "utilities/strings.hpp"
 #endif

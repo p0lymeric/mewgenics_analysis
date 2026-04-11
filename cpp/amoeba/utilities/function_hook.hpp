@@ -180,7 +180,7 @@ public:
         return true;
     }
 
-    static bool uninstall_hooks(int group) {
+    static bool uninstall_hooks(int group, bool lights_on_uninstall) {
         FunctionHookRegistryIndex &registry = SFunctionHookRegistry::get_registry(group);
 
         switch(registry.provider) {
@@ -234,7 +234,13 @@ public:
             #ifdef SUPPORT_MEWJECTOR_HOOK_IMPL
             case EFunctionHookProvider::Mewjector:
                 // MJ does not support function hook uninstallation
-                return false;
+                if(lights_on_uninstall) {
+                    // matters as we could be dll ejecting
+                    return false;
+                } else {
+                    // does not matter as process is going down
+                    return true;
+                }
                 break;
             #endif
             default:
@@ -247,9 +253,9 @@ public:
         return true;
     }
 
-    static bool uninstall_hooks_all() {
+    static bool uninstall_hooks_all(bool lights_on_uninstall) {
         for(auto &registry : SFunctionHookRegistry::get_registries()) {
-            if(!uninstall_hooks(registry.first)) {
+            if(!uninstall_hooks(registry.first, lights_on_uninstall)) {
                 return false;
             }
         }

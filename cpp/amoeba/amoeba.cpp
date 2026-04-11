@@ -89,9 +89,10 @@ bool on_attach() {
 
 bool on_unload_detach() {
     D::info("DllMain DLL_PROCESS_DETACH (unload)\n");
-    // try to gracefully remove our hooks if this dll
-    // was unloaded outside a process exit
-    if(!SFunctionHookRegistry::uninstall_hooks_all()) {
+    // Try to gracefully remove our hooks if this dll.
+    // We would've already tried to uninstall hooks when self-ejecting, BUT
+    // we also need to call uninstall here to handle external tool ejection (e.g. via System Informer).
+    if(!SFunctionHookRegistry::uninstall_hooks_all(true)) {
         // if hook uninstallation failed, call TerminateProcess
         return false;
     }
@@ -101,6 +102,13 @@ bool on_unload_detach() {
 
 bool on_exitprocess_detach() {
     D::info("DllMain DLL_PROCESS_DETACH (ExitProcess)\n");
+    // May as well clean up resources properly, even if the process is going down.
+    // Remove hooks, but don't fail if the API is unable to uninstall hooks.
+    if(!SFunctionHookRegistry::uninstall_hooks_all(false)) {
+        // if hook uninstallation failed, call TerminateProcess
+        return false;
+    }
+    deinitialize_imgui();
     return true;
 }
 
@@ -168,7 +176,7 @@ void initiate_dll_eject() {
 
     // Uninstall hooks now to guarantee no future call can enter this DLL after we leave
     // (assuming the hooked routines can only be executed by one thread)
-    if(!SFunctionHookRegistry::uninstall_hooks_all()) {
+    if(!SFunctionHookRegistry::uninstall_hooks_all(true)) {
         // if hook uninstallation failed, call TerminateProcess
         do_process_termination();
     }
@@ -217,10 +225,12 @@ BOOL WINAPI DllMain(
         case DLL_PROCESS_DETACH:
             // Perform any necessary cleanup.
             if(lpReserved == NULL) {
+                // traversed when the dll is ejected
                 if(!on_unload_detach()) {
                     terminate_process = true;
                 }
             } else {
+                // traversed when Mewgenics is exiting
                 if(!on_exitprocess_detach()) {
                     terminate_process = true;
                 }

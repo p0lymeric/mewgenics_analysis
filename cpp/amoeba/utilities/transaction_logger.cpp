@@ -1,5 +1,5 @@
-#include "transaction_logger.hpp"
-#include "debug_console.hpp"
+#include "utilities/transaction_logger.hpp"
+#include "utilities/debug_console.hpp"
 
 #include <algorithm>
 
