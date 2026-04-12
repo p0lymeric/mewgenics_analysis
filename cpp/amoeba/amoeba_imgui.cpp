@@ -1,10 +1,12 @@
 #include "amoeba.hpp"
 #include "types/glaiel.hpp"
+#include "types/msvc.hpp"
 #include "utilities/checksum.hpp"
 #include "utilities/debug_console.hpp"
 #include "utilities/function_hook.hpp"
 #include "utilities/strings.hpp"
 #include "utilities/memory.hpp"
+#include "utilities/portal.hpp"
 #include "ffi/cat_factory.hpp"
 #include "ffi/experimental.hpp"
 
@@ -56,6 +58,14 @@ void ImguiTextStdFmt(std::format_string<Args...> fmt, Args&&... args) {
     std::string s = std::format(fmt, std::forward<Args>(args)...);
     ImGui::TextUnformatted(s.data(), s.data() + s.size());
 }
+
+MAKE_DPORTAL(DATAOFF_glaiel__MewDirector__p_singleton,
+    MewDirector *, get_p_mewdirector_singleton
+)
+
+MAKE_DPORTAL(DATAOFF_maybe_housecat_component_pool,
+    ComponentPool<HouseCat>, get_housecat_component_pool
+)
 
 void show_about_modal(bool signal) {
     if(signal) {
@@ -445,18 +455,18 @@ void edit_cat(CatData &cat) {
     ImGui::InputScalar("birthday", ImGuiDataType_S64, &cat.birthday);
     ImGui::InputScalar("deathday_house", ImGuiDataType_S64, &cat.deathday_house);
     ImguiTextStdFmt("unknown 17");
-    ImguiTextStdFmt("unknown 17 size/capacity: {} {}", cat.unknown_17.size, cat.unknown_17.capacity);
+    ImguiTextStdFmt("unknown 17 size/capacity: {} {}", cat.unknown_17.size_, cat.unknown_17.capacity_);
     if(ImGui::BeginTable("unknown_17_table", 2)) {
         ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthStretch, 1.0f);
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, 3.0f);
         ImGui::TableHeadersRow();
-        for(uint32_t i = 0; i < cat.unknown_17.size; i++) {
+        for(uint32_t i = 0; i < cat.unknown_17.size_; i++) {
             ImGui::PushID(i);
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImguiTextStdFmt("{}", i);
             ImGui::TableNextColumn();
-            ImGui::InputScalar("##data", ImGuiDataType_U8, &cat.unknown_17.ptr[i]);
+            ImGui::InputScalar("##data", ImGuiDataType_U8, &cat.unknown_17.data_[i]);
             ImGui::PopID();
         }
         ImGui::EndTable();
@@ -677,17 +687,17 @@ void show_cat(CatData &cat) {
     ImguiTextStdFmt("Birthday: {}", cat.birthday); // TODO calculate days ago
     ImguiTextStdFmt("Deathday (if died in house): {}", cat.deathday_house);
     ImguiTextStdFmt("unknown 17");
-    ImguiTextStdFmt("unknown 17 size/capacity: {} {}", cat.unknown_17.size, cat.unknown_17.capacity);
+    ImguiTextStdFmt("unknown 17 size/capacity: {} {}", cat.unknown_17.size_, cat.unknown_17.capacity_);
     if(ImGui::BeginTable("unknown_17_table", 2)) {
         ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthStretch, 1.0f);
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, 3.0f);
         ImGui::TableHeadersRow();
-        for(uint32_t i = 0; i < cat.unknown_17.size; i++) {
+        for(uint32_t i = 0; i < cat.unknown_17.size_; i++) {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImguiTextStdFmt("{}", i);
             ImGui::TableNextColumn();
-            ImguiTextStdFmt("{}", cat.unknown_17.ptr[i]);
+            ImguiTextStdFmt("{}", cat.unknown_17.data_[i]);
         }
         ImGui::EndTable();
     }
@@ -727,7 +737,7 @@ void show_data_explorer_window() {
     ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
     if(ImGui::Begin("Data explorer", &P.show_data_explorer)) {
         // good architecture, just need to null check one global and you're ready to go!
-        MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+        MewDirector *p_md = get_p_mewdirector_singleton();
 
         if(ImGui::TreeNode("Pointers")) {
             ImguiTextStdFmt("Hook base VA: {:p}", reinterpret_cast<void *>(G.dll_base_va));
@@ -987,18 +997,34 @@ void show_data_explorer_window() {
             ImGui::TreePop();
         }
 
-        if(ImGui::TreeNode("Scenes")) {
+        if(ImGui::TreeNode("Managers")) {
             if(p_md != nullptr) {
-                auto &scenes = p_md->director->scenes;
-                if(ImGui::BeginTable("table1", 1)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-                    ImGui::TableHeadersRow();
-                    for(auto pp_scene = scenes._Myfirst; pp_scene < scenes._Mylast; pp_scene++) {
-                        ImGui::TableNextRow();
-                        ImGui::TableNextColumn();
-                        ImguiTextStdFmt("{}", (**pp_scene).name);
+                auto &managers = p_md->director->managers;
+                for(auto pp_manager = managers._Myfirst; pp_manager < managers._Mylast; pp_manager++) {
+                    if(ImGui::TreeNode((**pp_manager).name.copy_to_native_string().c_str())) {
+                        auto p_manager = *pp_manager;
+                        ImguiTextStdFmt("All components");
+                        if(p_manager != nullptr && ImGui::BeginTable("table1", 3)) {
+                            ImGui::TableSetupColumn("Pointer", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+                            ImGui::TableSetupColumn("Type ID", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                            ImGui::TableSetupColumn("Type Name", ImGuiTableColumnFlags_WidthStretch, 3.0f);
+                            ImGui::TableHeadersRow();
+                            for(auto pp_component = p_manager->ComponentLists->begin(); pp_component < p_manager->ComponentLists->end(); pp_component++) {
+                                ImGui::TableNextRow();
+                                ImGui::TableNextColumn();
+                                ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(*pp_component));
+                                ImGui::TableNextColumn();
+                                ImguiTextStdFmt("{}", (*pp_component)->vtable->GetObjectType());
+                                ImGui::TableNextColumn();
+                                MsvcReleaseModeXString type_name = {};
+                                (*pp_component)->vtable->GetObjectTypeSTR(*pp_component, &type_name); // in-place string construction
+                                ImguiTextStdFmt("{}", type_name.as_native_string_view());
+                                type_name.destroy();
+                            }
+                            ImGui::EndTable();
+                        }
+                        ImGui::TreePop();
                     }
-                    ImGui::EndTable();
                 }
             }
             ImGui::TreePop();
@@ -1006,33 +1032,27 @@ void show_data_explorer_window() {
 
         if(ImGui::TreeNode("House")) {
             if(p_md != nullptr) {
-                auto &scenes = p_md->director->scenes;
-                Scene *p_house = nullptr;
-                for(auto pp_scene = scenes._Myfirst; pp_scene < scenes._Mylast; pp_scene++) {
-                    if((*pp_scene)->name.as_native_string_view() == "House") {
-                        p_house = *pp_scene;
+                auto &managers = p_md->director->managers;
+                EntityManager *p_house = nullptr;
+                for(auto pp_manager = managers._Myfirst; pp_manager < managers._Mylast; pp_manager++) {
+                    if((*pp_manager)->name.as_native_string_view() == "House") {
+                        p_house = *pp_manager;
                         break;
                     }
                 }
-                // ImguiTextStdFmt("All components");
-                // if(p_house != nullptr && ImGui::BeginTable("table1", 1)) {
-                //     ImGui::TableSetupColumn("Type ID", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-                //     ImGui::TableHeadersRow();
-                //     for(auto hc = p_house->components->begin(); hc < p_house->components->end(); hc++) {
-                //         ImGui::TableNextRow();
-                //         ImGui::TableNextColumn();
-                //         ImguiTextStdFmt("{:02x}", (*hc)->vtable->type_id());
-                //     }
-                //     ImGui::EndTable();
-                // }
                 ImguiTextStdFmt("HouseCats");
                 if(p_house != nullptr && ImGui::BeginTable("table2", 1)) {
                     ImGui::TableSetupColumn("SQL ID", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                     ImGui::TableHeadersRow();
-                    for(auto hc = p_house->components->begin(); hc < p_house->components->end(); hc++) {
-                        if((*hc)->vtable->type_id() != 0x444) {
+                    for(auto hc = p_house->ComponentLists->begin(); hc < p_house->ComponentLists->end(); hc++) {
+                        const char COMPONENT_TYPE_NAME_HOUSECAT[] = "HouseCat";
+                        MsvcReleaseModeXString type_name = {};
+                        (*hc)->vtable->GetObjectTypeSTR(*hc, &type_name); // in-place string construction
+                        if(type_name.as_native_string_view() != COMPONENT_TYPE_NAME_HOUSECAT) {
+                            type_name.destroy();
                             continue;
                         }
+                        type_name.destroy();
                         ImGui::TableNextRow();
                         ImGui::TableNextColumn();
                         auto housecat = static_cast<HouseCat *>(*hc);
@@ -1045,23 +1065,23 @@ void show_data_explorer_window() {
         }
 
         if(ImGui::TreeNode("Component pools")) {
-            ComponentPool<HouseCat> *housecat_pool = reinterpret_cast<ComponentPool<HouseCat> *>(DATAOFF_maybe_housecat_component_pool + G.host_exec_base_va);
+            ComponentPool<HouseCat> &housecat_pool = get_housecat_component_pool();
             if(ImGui::TreeNode("HouseCat")) {
-                ImguiTextStdFmt("Chunk size: {} B", housecat_pool->chunk_size);
-                ImguiTextStdFmt("Slots per allocation: {}", housecat_pool->min_slots_per_allocation);
-                ImguiTextStdFmt("Slot size (sizeof(HouseCat) + 8 B): {} B", housecat_pool->slot_size);
-                ImguiTextStdFmt("Tail chunk allocation end: {:p}", housecat_pool->tail_chunk_allocated_end);
-                ImguiTextStdFmt("Tail chunk reservation end: {:p}", housecat_pool->tail_chunk_reservation_end);
-                ImguiTextStdFmt("Tail chunk used end: {:p}", housecat_pool->tail_chunk_used_end);
-                ImguiTextStdFmt("Next free slot: {:p}", reinterpret_cast<void *>(housecat_pool->p_next_free));
-                ImguiTextStdFmt("Free list had forward link?: {}", housecat_pool->probably_free_list_had_forward_link_flag);
+                ImguiTextStdFmt("Chunk size: {} B", housecat_pool.chunk_size);
+                ImguiTextStdFmt("Slots per allocation: {}", housecat_pool.min_slots_per_allocation);
+                ImguiTextStdFmt("Slot size (sizeof(HouseCat) + 8 B): {} B", housecat_pool.slot_size);
+                ImguiTextStdFmt("Tail chunk allocation end: {:p}", housecat_pool.tail_chunk_allocated_end);
+                ImguiTextStdFmt("Tail chunk reservation end: {:p}", housecat_pool.tail_chunk_reservation_end);
+                ImguiTextStdFmt("Tail chunk used end: {:p}", housecat_pool.tail_chunk_used_end);
+                ImguiTextStdFmt("Next free slot: {:p}", reinterpret_cast<void *>(housecat_pool.p_next_free));
+                ImguiTextStdFmt("Free list had forward link?: {}", housecat_pool.probably_free_list_had_forward_link_flag);
 
                 if(ImGui::TreeNode("Chunk list")) {
                     if(ImGui::BeginTable("table1", 2)) {
                         ImGui::TableSetupColumn("p_descriptor", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                         ImGui::TableSetupColumn("p_base", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                         ImGui::TableHeadersRow();
-                        auto p_descriptor = housecat_pool->head_chunk;
+                        auto p_descriptor = housecat_pool.head_chunk;
                         while(p_descriptor != nullptr) {
                             ImGui::TableNextRow();
                             ImGui::TableNextColumn();
@@ -1069,7 +1089,7 @@ void show_data_explorer_window() {
                             ImGui::TableNextColumn();
                             ImguiTextStdFmt("{:p}", p_descriptor->p_base);
                             // the current chunk's next pointer isn't zero-initialized, grrr...
-                            if(p_descriptor == housecat_pool->tail_chunk) {
+                            if(p_descriptor == housecat_pool.tail_chunk) {
                                 break;
                             }
                             p_descriptor = p_descriptor->next;
@@ -1082,7 +1102,7 @@ void show_data_explorer_window() {
                     if(ImGui::BeginTable("table1", 1)) {
                         ImGui::TableSetupColumn("p_slot", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                         ImGui::TableHeadersRow();
-                        auto p_free = housecat_pool->p_next_free;
+                        auto p_free = housecat_pool.p_next_free;
                         while(p_free != nullptr) {
                             ImGui::TableNextRow();
                             ImGui::TableNextColumn();
@@ -1100,10 +1120,10 @@ void show_data_explorer_window() {
                         ImGui::TableSetupColumn("generation", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                         ImGui::TableSetupColumn("data_first_qword", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                         ImGui::TableHeadersRow();
-                        char * p_first_slot = reinterpret_cast<char *>(housecat_pool->tail_chunk_reservation_end) - housecat_pool->chunk_size;
+                        char *p_first_slot = reinterpret_cast<char *>(housecat_pool.tail_chunk_reservation_end) - housecat_pool.chunk_size;
                         for(
                             auto p_slot = reinterpret_cast<ComponentPoolSlot<HouseCat> *>(p_first_slot);
-                            p_slot < housecat_pool->tail_chunk_used_end;
+                            p_slot < housecat_pool.tail_chunk_used_end;
                             p_slot++
                         ) {
                             ImGui::TableNextRow();
@@ -1131,7 +1151,7 @@ std::unordered_map<int64_t, CatData *> build_unified_cat_table() {
     // merge the two maps, taking game CatData instances over analyzer CatData, and sort by sql id
     std::unordered_map<int64_t, CatData *> unified_cat_table;
 
-    MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+    MewDirector *p_md = get_p_mewdirector_singleton();
     if(p_md != nullptr) {
         CatDatabase *p_cdb = p_md->cats;
         unified_cat_table.reserve(std::max(p_cdb->cats._List._Mysize, P.save_explorer_cats.size()));
@@ -1165,7 +1185,7 @@ struct PedigreeIndex {
 };
 
 PedigreeIndex build_pedigree_index() {
-    MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+    MewDirector *p_md = get_p_mewdirector_singleton();
     std::unordered_map<int64_t, std::set<int64_t>> children_table;
     std::unordered_map<int64_t, std::unordered_map<int64_t, size_t>> mate_table;
     if(p_md != nullptr) {
@@ -1449,7 +1469,7 @@ void show_feline_therapist_window() {
         ImguiTextStdFmt("{}", navigation_cat_desc);
 
         if(picked_cat != nullptr) {
-            MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+            MewDirector *p_md = get_p_mewdirector_singleton();
             if(p_md != nullptr) {
                 // TODO yet another all-cats operation executed every frame
                 PedigreeIndex pedigree_index = build_pedigree_index();
@@ -1648,11 +1668,8 @@ void show_save_explorer_window() {
                         cat->body_parts.pitch = 0.5;
                         cat->body_parts.head.part_sprite_idx = 10;
                         cat->stats_heritable.cha = 10;
-                        std::wstring new_name = L"gigacat";
-                        // type f**kery
-                        // (MsvcReleaseModeXWString implementation does not support modification so we'll borrow MSVC's implementation for now)
-                        std::destroy_at(reinterpret_cast<std::wstring *>(&cat->name));
-                        std::construct_at(reinterpret_cast<std::wstring *>(&cat->name), std::move(new_name));
+                        cat->name.destroy();
+                        cat->name.construct(L"gigacat");
                     });
                 }
                 static int64_t cat_sql_key_to_clone;

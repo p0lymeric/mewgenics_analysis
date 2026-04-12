@@ -27,3 +27,13 @@ template<typename T>
 T *get_tls0_base() {
     return reinterpret_cast<T **>(__readgsqword(0x58))[0];
 }
+
+// Allocate onto the host process' heap
+inline void *host_alloc(size_t size) {
+    return HeapAlloc(GetProcessHeap(), 0, size);
+}
+
+// Free from the host process' heap
+inline void host_free(void *ptr) {
+    HeapFree(GetProcessHeap(), 0, ptr);
+}

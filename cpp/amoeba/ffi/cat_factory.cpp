@@ -3,6 +3,7 @@
 #include "utilities/debug_console.hpp"
 #include "utilities/function_hook.hpp"
 #include "utilities/sqlite3_conn_wrapper.hpp"
+#include "utilities/portal.hpp"
 
 #include <stack>
 
@@ -12,27 +13,39 @@
 //
 // polymeric 2026
 
+MAKE_DPORTAL(DATAOFF_glaiel__MewDirector__p_singleton,
+    MewDirector *, get_p_mewdirector_singleton
+)
+
+MAKE_FPORTAL(ADDRESS_glaiel__CatData_ctor,
+    CatData *, __cdecl, glaiel__CatData_ctor,
+    (CatData *thiss),
+    (thiss)
+)
+
+MAKE_FPORTAL(ADDRESS_glaiel__CatData_dtor,
+    void, __cdecl, glaiel__CatData_dtor,
+    (CatData *thiss),
+    (thiss)
+)
+
 void CatDataDeleter::operator()(CatData *p_cat) const {
-    using glaiel__CatData_dtor_FP = void (__cdecl *)(struct CatData* thiss);
-    glaiel__CatData_dtor_FP glaiel__CatData_dtor_fp = *reinterpret_cast<glaiel__CatData_dtor_FP>(ADDRESS_glaiel__CatData_dtor + G.host_exec_base_va);
-    glaiel__CatData_dtor_fp(p_cat);
+    glaiel__CatData_dtor(p_cat);
     delete p_cat;
 }
 
 ManagedCatData new_default_cat() {
     CatData *p_new_cat = reinterpret_cast<CatData *>(new char[sizeof(CatData)]()); // zero-init
-    using glaiel__CatData_ctor_FP = CatData *(__cdecl *)(struct CatData* thiss);
-    glaiel__CatData_ctor_FP glaiel__CatData_ctor_fp = *reinterpret_cast<glaiel__CatData_ctor_FP>(ADDRESS_glaiel__CatData_ctor + G.host_exec_base_va);
-    glaiel__CatData_ctor_fp(p_new_cat);
+    glaiel__CatData_ctor(p_new_cat);
 
     return ManagedCatData(p_new_cat);
 }
 
-void deserialize_into_cat(CatData *p_cat, ByteStream *p_byte_stream) {
-    using glaiel__SerializeCatData_FP = void (__cdecl *)(struct CatData* cat, struct ByteStream *byte_stream, bool assert_version_cutoff_on_load);
-    glaiel__SerializeCatData_FP glaiel__SerializeCatData_fp = *reinterpret_cast<glaiel__SerializeCatData_FP>(ADDRESS_glaiel__SerializeCatData + G.host_exec_base_va);
-    glaiel__SerializeCatData_fp(p_cat, p_byte_stream, false);
-}
+MAKE_FPORTAL(ADDRESS_glaiel__SerializeCatData,
+    void, __cdecl, glaiel__SerializeCatData,
+    (struct CatData* cat, struct ByteStream *byte_stream, bool assert_version_cutoff_on_load),
+    (cat, byte_stream, assert_version_cutoff_on_load)
+)
 
 ManagedCatData load_cat(int64_t sql_id) {
     // TITLE: Dr. Beanies' guide to (safe?) cat resurrection
@@ -40,7 +53,7 @@ ManagedCatData load_cat(int64_t sql_id) {
     // RIGHTSHOLDER: Beanies Teaching Films, Ltd.
     // YEAR OF PRODUCTION: 1958 (MCMLVIII)
 
-    MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+    MewDirector *p_md = get_p_mewdirector_singleton();
 
     if(p_md == nullptr) {
         return nullptr;
@@ -146,7 +159,7 @@ ManagedCatData load_cat(int64_t sql_id) {
 
     // Aww, poor li'l guy! It's barely a cat at this stage!
     // Let's fix that!
-    deserialize_into_cat(new_cat.get(), &byte_stream);
+    glaiel__SerializeCatData(new_cat.get(), &byte_stream, false);
 
     // (And that is the technique of cat resurrection!)
 
@@ -158,7 +171,7 @@ ManagedCatData load_cat(int64_t sql_id) {
 }
 
 void overwrite_cat(CatData *target_cat, int64_t source_sql_id) {
-    MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+    MewDirector *p_md = get_p_mewdirector_singleton();
 
     if(p_md == nullptr) {
         return;
@@ -206,11 +219,11 @@ void overwrite_cat(CatData *target_cat, int64_t source_sql_id) {
     byte_stream.des_buffer_read_cursor = 0;
 
 
-    deserialize_into_cat(target_cat, &byte_stream);
+    glaiel__SerializeCatData(target_cat, &byte_stream, false);
 }
 
 std::unordered_map<int64_t, ManagedCatData> load_all_cats() {
-    MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+    MewDirector *p_md = get_p_mewdirector_singleton();
 
     ByteStream byte_stream = {};
     byte_stream.direction_0_des_buffer_1_ser_buffer_2_ser_ostream = 0;
@@ -257,7 +270,7 @@ std::unordered_map<int64_t, ManagedCatData> load_all_cats() {
             byte_stream.des_buffer_size = static_cast<int>(decompressed_cat.size());
             byte_stream.des_buffer_read_cursor = 0;
 
-            deserialize_into_cat(new_cat.get(), &byte_stream);
+            glaiel__SerializeCatData(new_cat.get(), &byte_stream, false);
 
             tracked_cats.try_emplace(sql_key, std::move(new_cat));
 
@@ -282,26 +295,24 @@ MAKE_HOOK(0, ADDRESS_glaiel__CatData_unk_init,
     glaiel__CatData_unk_init_hook.orig(p_cat, ofstream_eliminated_by_opt, sex, our_register_in_name_history);
 }
 
-void unk_init(CatData *p_cat, int32_t sex, bool register_in_name_history) {
-    using ADDRESS_glaiel__CatParts_unk_init_FP = void (__cdecl *)(CatData *p_cat, void *ofstream_eliminated_by_opt, int32_t sex, bool register_in_name_history);
-    ADDRESS_glaiel__CatParts_unk_init_FP ADDRESS_glaiel__CatParts_unk_init_fp = *reinterpret_cast<ADDRESS_glaiel__CatParts_unk_init_FP>(ADDRESS_glaiel__CatData_unk_init + G.host_exec_base_va);
-    // 0 - male, 1 - female, 2 - neutral, 3 - randomize
-    // guessing that appeal modifier lookup is baked in this fn
-    ADDRESS_glaiel__CatParts_unk_init_fp(p_cat, nullptr, sex, register_in_name_history);
-}
+MAKE_FPORTAL(ADDRESS_glaiel__CatData_unk_init,
+    CatData *, __cdecl, glaiel__CatData_unk_init,
+    (CatData *p_cat, void *ofstream_eliminated_by_opt, int32_t sex, bool register_in_name_history),
+    (p_cat, ofstream_eliminated_by_opt, sex, register_in_name_history)
+)
 
-void unk_init_bodyparts(BodyParts *p_bodyparts) {
-    using ADDRESS_glaiel__CatData_unk_init_bodyparts_FP = void (__cdecl *)(BodyParts *p_bodyparts);
-    ADDRESS_glaiel__CatData_unk_init_bodyparts_FP ADDRESS_glaiel__CatData_unk_init_bodyparts_fp = *reinterpret_cast<ADDRESS_glaiel__CatData_unk_init_bodyparts_FP>(ADDRESS_glaiel__CatData_unk_init_bodyparts + G.host_exec_base_va);
-    ADDRESS_glaiel__CatData_unk_init_bodyparts_fp(p_bodyparts);
-}
+MAKE_FPORTAL(ADDRESS_glaiel__CatData_unk_init_bodyparts,
+    void, __cdecl, glaiel__CatData_unk_init_bodyparts,
+    (BodyParts *p_bodyparts),
+    (p_bodyparts)
+)
 
-void breed(CatData *p_kitten, CatData *p_parent_a, CatData *p_parent_b, double coi) {
-    using ADDRESS_glaiel__CatData_breed_FP = void (__cdecl *)(CatData *p_kitten, CatData *p_parent_a, CatData *p_parent_b, double coi, void *vector_of_furniture_effects);
-    ADDRESS_glaiel__CatData_breed_FP ADDRESS_glaiel__CatData_breed_fp = *reinterpret_cast<ADDRESS_glaiel__CatData_breed_FP>(ADDRESS_glaiel__CatData__breed + G.host_exec_base_va);
-    // TODO furniture effects, guessing the house interstitial function retrieves vector_of_furniture_effects based on the room where the deed was done
-    ADDRESS_glaiel__CatData_breed_fp(p_kitten, p_parent_a, p_parent_b, coi, nullptr);
-}
+MAKE_FPORTAL(ADDRESS_glaiel__CatData__breed,
+    void, __cdecl, glaiel__CatData__breed,
+    (CatData *p_kitten, CatData *p_parent_a, CatData *p_parent_b, double coi, void *vector_of_furniture_effects),
+    // TODO furniture effects, the house interstitial function retrieves vector_of_furniture_effects based on the room where the deed was done
+    (p_kitten, p_parent_a, p_parent_b, coi, vector_of_furniture_effects)
+)
 
 ManagedCatData make_stray(Xoshiro256pContext *rng_override) {
     auto *p_tls = get_tls0_base<char>();
@@ -312,8 +323,8 @@ ManagedCatData make_stray(Xoshiro256pContext *rng_override) {
     }
     ManagedCatData cat = new_default_cat();
     // "Now I am become Cat, destroyer of worlds, small animals, and upholstery"
-    unk_init(cat.get(), 3, false);
-    unk_init_bodyparts(&cat->body_parts);
+    glaiel__CatData_unk_init(cat.get(), nullptr, 3, false);
+    glaiel__CatData_unk_init_bodyparts(&cat->body_parts);
     if(rng_override != nullptr) {
         *rng_override = *p_rng;
     }
@@ -344,7 +355,7 @@ struct ParentCOINativeHasher {
 };
 
 double calculate_coi(int64_t parent_a_key, int64_t parent_b_key) {
-    MewDirector *p_md = *reinterpret_cast<MewDirector **>(DATAOFF_glaiel__MewDirector__p_singleton + G.host_exec_base_va);
+    MewDirector *p_md = get_p_mewdirector_singleton();
     if(p_md == nullptr) {
         return 0.0;
     }
@@ -449,7 +460,7 @@ ManagedCatData make_kitten(CatData *p_parent_a, CatData *p_parent_b, double coi,
     glaiel__CatData_unk_init_register_in_name_history_override = true;
     glaiel__CatData_unk_init_register_in_name_history_val = false;
     // Test tube kitty!
-    breed(kitten.get(), p_parent_a, p_parent_b, coi);
+    glaiel__CatData__breed(kitten.get(), p_parent_a, p_parent_b, coi, nullptr);
     glaiel__CatData_unk_init_register_in_name_history_override = false;
     if(rng_override != nullptr) {
         *rng_override = *p_rng;

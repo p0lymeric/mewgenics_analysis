@@ -2,6 +2,7 @@
 #include "utilities/debug_console.hpp"
 #include "utilities/function_hook.hpp"
 #include "utilities/strings.hpp"
+#include "utilities/portal.hpp"
 
 #include <filesystem>
 
@@ -63,6 +64,9 @@ bool on_attach() {
 
     // D::info("Mewgenics.exe path {}", get_module_file_path(NULL).string());
     // D::info("amoeba.dll path {}", get_module_file_path(reinterpret_cast<HMODULE>(G.dll_base_va)).string());
+
+    // Resolve portals (trampolines to functions and data)
+    SPortalRegistry::resolve_portals(host_exec_base_va);
 
     // Try to install function hooks
     if(SFunctionHookRegistry::api_is_present(EFunctionHookProvider::Mewjector)) {

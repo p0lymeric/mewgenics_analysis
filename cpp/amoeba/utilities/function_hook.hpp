@@ -29,19 +29,19 @@
 
 // Makes a hook that will be managed by FunctionHookRegistry
 #define MAKE_HOOK(group, address, ret_type, call_conv, name, ...) \
-    ret_type call_conv name##_detour(__VA_ARGS__); \
-    RvaFunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), true, group> name##_hook(address, &name##_detour); \
-    ret_type call_conv name##_detour(__VA_ARGS__)
+    static ret_type call_conv name##_detour(__VA_ARGS__); \
+    static RvaFunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), true, group> name##_hook(address, &name##_detour); \
+    static ret_type call_conv name##_detour(__VA_ARGS__)
 
 #define MAKE_VHOOK(group, ret_type, call_conv, name, ...) \
-    ret_type call_conv name##_detour(__VA_ARGS__); \
-    VaFunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), true, group> name##_hook(&name, &name##_detour); \
-    ret_type call_conv name##_detour(__VA_ARGS__)
+    static ret_type call_conv name##_detour(__VA_ARGS__); \
+    static VaFunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), true, group> name##_hook(&name, &name##_detour); \
+    static ret_type call_conv name##_detour(__VA_ARGS__)
 
 #define MAKE_PHOOK(group, lp_proc_name, ret_type, call_conv, name, ...) \
-    ret_type call_conv name##_detour(__VA_ARGS__); \
-    ProcFunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), true, group> name##_hook(lp_proc_name, &name##_detour); \
-    ret_type call_conv name##_detour(__VA_ARGS__)
+    static ret_type call_conv name##_detour(__VA_ARGS__); \
+    static ProcFunctionHookDescriptor<ret_type (call_conv *)(__VA_ARGS__), true, group> name##_hook(lp_proc_name, &name##_detour); \
+    static ret_type call_conv name##_detour(__VA_ARGS__)
 
 enum class EFunctionHookProvider {
     Uninstalled,

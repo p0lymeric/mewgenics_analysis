@@ -41,8 +41,8 @@ inline constexpr uintptr_t ADDRESS_glaiel__CatData__breed = 0xa6790; // WARP d6a
 // inline constexpr uintptr_t ADDRESS_glaiel__unk_spawn_custom_stray_handler = 0x1f1dd0; // WARP 9b184da4-b056-5067-8a8e-dd49212bf1e7
 inline constexpr uintptr_t ADDRESS_glaiel__HouseCat__unk_remove_from_world = 0x1fcf20; // WARP c20e4014-a3ed-5555-9ca0-629fff444e5b
 inline constexpr uintptr_t ADDRESS_maybe_create_stray_catdata_and_register_in_pedigree = 0x0d5540; // WARP 2ca48645-fa59-519c-b8d7-e000fbbefd24
-inline constexpr uintptr_t ADDRESS_maybe_make_entity = 0x95afe0; // WARP ca24a073-64b1-5459-8e35-daf6a5ecb251
-inline constexpr uintptr_t ADDRESS_maybe_spawn_stray_immediate = 0x1f3a70; // WARP a26ef3ea-f90c-5415-bf20-0341817189e4
+inline constexpr uintptr_t ADDRESS_TEINglaiel__EntityManager__CreateEntity = 0x95afe0; // WARP ca24a073-64b1-5459-8e35-daf6a5ecb251
+inline constexpr uintptr_t ADDRESS_TEINglaiel__EntityManager__CreateComponent_HouseCat_int64 = 0x1f3a70; // WARP a26ef3ea-f90c-5415-bf20-0341817189e4
 
 // Data offsets are encoded as relative VAs
 inline constexpr uintptr_t DATAOFF_glaiel__MewDirector__p_singleton = 0x13c7bd0; // find this by recursively tracing callers of glaiel__SerializeCatData; at least one root caller will pass a global reference in arg1

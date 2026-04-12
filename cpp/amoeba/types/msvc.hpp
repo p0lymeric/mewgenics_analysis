@@ -1,6 +1,9 @@
 #pragma once
 
+#include "utilities/memory.hpp"
+
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <format>
 
@@ -59,6 +62,41 @@ struct MsvcReleaseModeXString {
     operator std::string_view() const {
         return this->as_native_string_view();
     }
+
+    MsvcReleaseModeXString() {}
+
+    void construct() {
+        this->_Bx._Buf[0] = '\0';
+        this->_Mysize = 0;
+        this->_Myres = 15;
+    }
+
+    void construct(const char *data, size_t size) {
+        if(size < 16) {
+            std::memcpy(this->_Bx._Buf, data, size);
+            this->_Bx._Buf[size] = '\0';
+            this->_Mysize = size;
+            this->_Myres = 15;
+        } else {
+            // + 1 for the nullterm
+            this->_Bx._Ptr = static_cast<char *>(host_alloc(size + 1));
+            std::memcpy(this->_Bx._Ptr, data, size);
+            this->_Bx._Ptr[size] = '\0';
+            // does not count the nullterm
+            this->_Mysize = size;
+            this->_Myres = size;
+        }
+    }
+
+    void construct(const char *c_str) {
+        construct(c_str, std::strlen(c_str));
+    }
+
+    void destroy() {
+        if(this->_Myres >= 16) {
+            host_free(this->_Bx._Ptr);
+        }
+    }
 };
 template<>
 struct std::formatter<MsvcReleaseModeXString> : std::formatter<std::string_view> {
@@ -109,6 +147,41 @@ struct MsvcReleaseModeXWString {
 
     operator std::wstring_view() const {
         return this->as_native_wstring_view();
+    }
+
+    MsvcReleaseModeXWString() {}
+
+    void construct() {
+        this->_Bx._Buf[0] = L'\0';
+        this->_Mysize = 0;
+        this->_Myres = 7;
+    }
+
+    void construct(const wchar_t *data, size_t size) {
+        if(size < 8) {
+            std::memcpy(this->_Bx._Buf, data, size * sizeof(wchar_t));
+            this->_Bx._Buf[size] = L'\0';
+            this->_Mysize = size;
+            this->_Myres = 7;
+        } else {
+            // + 1 for the nullterm
+            this->_Bx._Ptr = static_cast<wchar_t *>(host_alloc((size + 1) * sizeof(wchar_t)));
+            std::memcpy(this->_Bx._Ptr, data, size * sizeof(wchar_t));
+            this->_Bx._Ptr[size] = L'\0';
+            // does not count the nullterm
+            this->_Mysize = size;
+            this->_Myres = size;
+        }
+    }
+
+    void construct(const wchar_t *c_str) {
+        construct(c_str, std::wcslen(c_str));
+    }
+
+    void destroy() {
+        if(this->_Myres >= 8) {
+            host_free(this->_Bx._Ptr);
+        }
     }
 };
 template<>
