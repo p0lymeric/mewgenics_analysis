@@ -31,6 +31,7 @@ add_library(dear_imgui STATIC
     ${DEAR_IMGUI_DIR}/imgui_widgets.cpp
     ${DEAR_IMGUI_DIR}/backends/imgui_impl_sdl3.cpp
     ${DEAR_IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+    ${DEAR_IMGUI_DIR}/misc/cpp/imgui_stdlib.cpp
 )
 
 target_link_libraries(dear_imgui PRIVATE SDL3::Headers)

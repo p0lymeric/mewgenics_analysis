@@ -4,6 +4,7 @@
 #include <format>
 #include <filesystem>
 #include <iostream>
+#include <bit>
 
 #include <windows.h>
 #include <tlhelp32.h>
@@ -58,7 +59,7 @@ bool try_hook_process(DWORD pid, std::filesystem::path dll_path_relative_to_load
 
     // LoadLibraryW is located at the same VA within all processes that have kernel32.dll mapped.
     // Key trick is to extract its address from our process and call the same address from the target.
-    LPTHREAD_START_ROUTINE p_LoadLibraryW = reinterpret_cast<LPTHREAD_START_ROUTINE>(reinterpret_cast<void *>(&LoadLibraryW));
+    LPTHREAD_START_ROUTINE p_LoadLibraryW = std::bit_cast<LPTHREAD_START_ROUTINE>(&LoadLibraryW);
     HANDLE h_thread = CreateRemoteThread(h_process, NULL, 0, p_LoadLibraryW, mem, 0, NULL);
     if(h_thread == NULL) {
         VirtualFreeEx(h_process, mem, 0, MEM_RELEASE);

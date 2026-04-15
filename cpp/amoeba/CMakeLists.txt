@@ -49,6 +49,7 @@ add_library(${HOOK_NAME} SHARED
     utilities/transaction_logger.cpp
     utilities/sqlite3_conn_wrapper.cpp
     utilities/mewjector_support.c
+    utilities/imgui_support.cpp
     ffi/cat_factory.cpp
     ffi/experimental.cpp
 )

@@ -27,9 +27,7 @@ struct SqlLoggerPrivateState {
 
 static SqlLoggerPrivateState P;
 
-void write_db_to_log(std::string file_path) {
-    G.tlogger.select_vsid(TlogVsid::SaveData);
-    G.tlogger.set_timestamp_now();
+int64_t get_unix_mtime_usec(std::filesystem::path file_path) {
     #if defined(__clang__) && !defined(_MSC_VER)
     // libc++ does not implement clock_cast
     int64_t mtime = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -45,12 +43,19 @@ void write_db_to_log(std::string file_path) {
         ).time_since_epoch()
     ).count();
     #endif
+    return mtime;
+}
+
+void write_db_to_log(std::string file_path) {
+    G.tlogger.select_vsid(TlogVsid::SaveData);
+    G.tlogger.set_timestamp_now();
+
     if constexpr(TLOG_SCHEMA_VERSION_HINT > 0) {
         // relative to Unix epoch
-        G.tlogger.write_int64(mtime);
+        G.tlogger.write_int64(get_unix_mtime_usec(file_path));
     } else {
         // relative to Windows FILETIME epoch
-        G.tlogger.write_int64(mtime + 11644473600000000);
+        G.tlogger.write_int64(get_unix_mtime_usec(file_path) + 11644473600000000);
     }
     G.tlogger.write_string(convert_filesystem_path_to_utf8_string(std::filesystem::path(file_path).filename()));
     G.tlogger.write_blob_from_file(file_path);

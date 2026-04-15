@@ -41,9 +41,9 @@ void spawn_stray_at_house(std::function<void(CatData *cat)> customize_your_cat) 
 
     // get the House EntityManager
     EntityManager *p_house_manager = nullptr;
-    for(auto pp_manager = p_md->director->managers._Myfirst; pp_manager < p_md->director->managers._Mylast; pp_manager++) {
-        if((*pp_manager)->name.as_native_string_view() == "House") {
-            p_house_manager = *pp_manager;
+    for(auto &p_manager : p_md->director->managers) {
+        if(p_manager->name.as_native_string_view() == "House") {
+            p_house_manager = p_manager;
             break;
         }
     }
@@ -68,8 +68,8 @@ void spawn_stray_at_house(std::function<void(CatData *cat)> customize_your_cat) 
 
     // create a HouseCat and spawn it in the world
     // this will crash the game if invoked away from the house
-    HouseCat *housecat = TEINglaiel__EntityManager__CreateComponent_HouseCat_int64(p_house_manager, TEINglaiel__EntityManager__CreateEntity(p_house_manager), &cat->sql_key);
-    D::debug("HouseCat created at {:p} with SQL ID {} and type ID {}", reinterpret_cast<void *>(housecat), housecat->sql_key, housecat->vtable->GetObjectType());
+    HouseCat *p_housecat = TEINglaiel__EntityManager__CreateComponent_HouseCat_int64(p_house_manager, TEINglaiel__EntityManager__CreateEntity(p_house_manager), &cat->sql_key);
+    D::debug("HouseCat created at {:p} with SQL ID {} and type ID {}", reinterpret_cast<void *>(p_housecat), p_housecat->sql_key, p_housecat->vtable->GetObjectType(p_housecat));
 
     // at this point a new cat should appear next to the trash bin where strays appear each day
 
@@ -103,9 +103,9 @@ void despawn_housecat(int64_t sql_key) {
 
     // get the House EntityManager
     EntityManager *p_house_manager = nullptr;
-    for(auto pp_manager = p_md->director->managers._Myfirst; pp_manager < p_md->director->managers._Mylast; pp_manager++) {
-        if((*pp_manager)->name.as_native_string_view() == "House") {
-            p_house_manager = *pp_manager;
+    for(auto &p_manager : p_md->director->managers) {
+        if(p_manager->name.as_native_string_view() == "House") {
+            p_house_manager = p_manager;
             break;
         }
     }
@@ -141,24 +141,24 @@ void despawn_housecat(int64_t sql_key) {
     const char COMPONENT_TYPE_NAME_HOUSECAT[] = "HouseCat";
 
     // Search through the House EntityManager's component vector
-    for(auto pp_comp = p_house_manager->ComponentLists->begin(); pp_comp < p_house_manager->ComponentLists->end(); pp_comp++) {
+    for(auto p_component : *p_house_manager->ComponentLists) {
         // Type ID matching
-        // if((*pp_comp)->vtable->GetObjectType() != COMPONENT_TYPE_ID_HOUSECAT) {
+        // if(p_component->vtable->GetObjectType(p_component) != COMPONENT_TYPE_ID_HOUSECAT) {
         //     continue;
         // }
 
         // Type name matching
         MsvcReleaseModeXString type_name = {};
-        (*pp_comp)->vtable->GetObjectTypeSTR(*pp_comp, &type_name); // in-place string construction
+        p_component->vtable->GetObjectTypeSTR(p_component, &type_name); // in-place string construction
         if(type_name.as_native_string_view() != COMPONENT_TYPE_NAME_HOUSECAT) {
             type_name.destroy();
             continue;
         }
         type_name.destroy();
 
-        auto housecat = static_cast<HouseCat *>(*pp_comp);
-        if(housecat->sql_key == sql_key) {
-            glaiel__HouseCat__unk_remove_from_world(housecat);
+        auto p_housecat = static_cast<HouseCat *>(p_component);
+        if(p_housecat->sql_key == sql_key) {
+            glaiel__HouseCat__unk_remove_from_world(p_housecat);
             return;
         }
     }

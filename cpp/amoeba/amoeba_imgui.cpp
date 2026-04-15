@@ -7,6 +7,7 @@
 #include "utilities/strings.hpp"
 #include "utilities/memory.hpp"
 #include "utilities/portal.hpp"
+#include "utilities/imgui_support.hpp"
 #include "ffi/cat_factory.hpp"
 #include "ffi/experimental.hpp"
 
@@ -14,12 +15,12 @@
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
+#include "misc/cpp/imgui_stdlib.h"
 
 #include <cstring>
 #include <list>
 #include <set>
 #include <unordered_map>
-#include <utility>
 #include <algorithm>
 #include <filesystem>
 
@@ -52,12 +53,6 @@ struct ImguiPrivateState {
 };
 
 static ImguiPrivateState P;
-
-template<class... Args>
-void ImguiTextStdFmt(std::format_string<Args...> fmt, Args&&... args) {
-    std::string s = std::format(fmt, std::forward<Args>(args)...);
-    ImGui::TextUnformatted(s.data(), s.data() + s.size());
-}
 
 MAKE_DPORTAL(DATAOFF_glaiel__MewDirector__p_singleton,
     MewDirector *, get_p_mewdirector_singleton
@@ -255,8 +250,8 @@ void show_debug_console_window() {
 
 void edit_cat(CatData &cat) {
     ImguiTextStdFmt("p_CatData: {:p}", reinterpret_cast<void *>(&cat));
-    ImguiTextStdFmt("Name: {}", convert_utf16_wstring_to_utf8_string(cat.name));
-    ImguiTextStdFmt("Nameplate symbol: {}", cat.nameplate_symbol);
+    ImGuiInputText("name", &cat.name, 0, nullptr, nullptr);
+    ImGuiInputText("nameplate_symbol", &cat.nameplate_symbol, 0, nullptr, nullptr);
     ImGui::InputScalar("entropy", ImGuiDataType_U64, &cat.entropy);
     ImGui::InputScalar("sex", ImGuiDataType_U32, &cat.sex);
     ImGui::InputScalar("sex_dup", ImGuiDataType_U32, &cat.sex_dup);
@@ -269,7 +264,7 @@ void edit_cat(CatData &cat) {
         }
     }
     ImguiTextStdFmt("Flags: {}", flags_list);
-    ImguiTextStdFmt("unknown 2: {}", cat.unknown_2);
+    ImGuiInputText("unknown_2", &cat.unknown_2, 0, nullptr, nullptr);
     ImGui::InputScalar("unknown_3", ImGuiDataType_S32, &cat.unknown_3);
 
     ImGui::InputScalar("libido", ImGuiDataType_Double, &cat.libido);
@@ -328,7 +323,7 @@ void edit_cat(CatData &cat) {
         }
         ImGui::EndTable();
     }
-    ImguiTextStdFmt("Voice: {}", cat.body_parts.voice);
+    ImGuiInputText("body_parts.voice", &cat.body_parts.voice, 0, nullptr, nullptr);
     ImGui::InputScalar("body_parts.pitch", ImGuiDataType_Double, &cat.body_parts.pitch);
     ImguiTextStdFmt("Stats");
     if(ImGui::BeginTable("stats_table", 8)) {
@@ -365,7 +360,7 @@ void edit_cat(CatData &cat) {
         }
         ImGui::EndTable();
     }
-    ImguiTextStdFmt("Last debuff: {}", cat.last_injury_debuffed_stat);
+    ImGuiInputText("last_injury_debuffed_stat", &cat.last_injury_debuffed_stat, 0, nullptr, nullptr);
     ImGui::InputScalar("campaign_stats.hp", ImGuiDataType_S32, &cat.campaign_stats.hp);
     ImGui::InputScalar("campaign_stats.dead", ImGuiDataType_U8, &cat.campaign_stats.dead);
     ImGui::InputScalar("campaign_stats.unknown_0", ImGuiDataType_U8, &cat.campaign_stats.unknown_0);
@@ -376,33 +371,39 @@ void edit_cat(CatData &cat) {
         ImGui::TableSetupColumn("Expression", ImGuiTableColumnFlags_WidthStretch, 1.0f);
         ImGui::TableSetupColumn("Battles remaining", ImGuiTableColumnFlags_WidthStretch, 0.5f);
         ImGui::TableHeadersRow();
-        for(auto p_mod = cat.campaign_stats.event_stat_modifiers._Myfirst; p_mod < cat.campaign_stats.event_stat_modifiers._Mylast; p_mod++) {
+        int i = 0;
+        for(auto &mod : cat.campaign_stats.event_stat_modifiers) {
+            ImGui::PushID(i);
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(p_mod));
+            ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(&mod));
             ImGui::TableNextColumn();
-            ImguiTextStdFmt("{}", p_mod->expression.SaveToStr(true));
+            ImguiTextStdFmt("{}", mod.expression.SaveToStr(true)); // TODO GON editing
             ImGui::TableNextColumn();
-            ImguiTextStdFmt("{}", p_mod->battles_remaining);
+            ImGui::InputScalar("##battles_remaining", ImGuiDataType_S32, &mod.battles_remaining);
+            ImGui::PopID();
+            i++;
         }
         ImGui::EndTable();
     }
-    for(int i = 0; i < 2; i++) {
-        auto p_base = cat.actives_basic;
-        ImguiTextStdFmt("Basic {}: {}", i, p_base[i]);
-    }
-    for(int i = 0; i < 4; i++) {
-        auto p_base = cat.actives_accessible;
-        ImguiTextStdFmt("Active (accessible) {}: {}", i, p_base[i]);
-    }
-    for(int i = 0; i < 4; i++) {
-        auto p_base = cat.actives_inherited;
-        ImguiTextStdFmt("Active (inherited) {}: {}", i, p_base[i]);
-    }
-    ImguiTextStdFmt("Passive 0: {} {}", cat.passive_0, cat.passive_0_level);
-    ImguiTextStdFmt("Passive 1: {} {}", cat.passive_1, cat.passive_1_level);
-    ImguiTextStdFmt("Mutation 0: {} {}", cat.passive_2, cat.passive_2_level);
-    ImguiTextStdFmt("Mutation 1: {} {}", cat.passive_3, cat.passive_3_level);
+    ImGuiInputText("actives_basic[0]", &cat.actives_basic[0], 0, nullptr, nullptr);
+    ImGuiInputText("actives_basic[1]", &cat.actives_basic[1], 0, nullptr, nullptr);
+    ImGuiInputText("actives_accessible[0]", &cat.actives_accessible[0], 0, nullptr, nullptr);
+    ImGuiInputText("actives_accessible[1]", &cat.actives_accessible[1], 0, nullptr, nullptr);
+    ImGuiInputText("actives_accessible[2]", &cat.actives_accessible[2], 0, nullptr, nullptr);
+    ImGuiInputText("actives_accessible[3]", &cat.actives_accessible[3], 0, nullptr, nullptr);
+    ImGuiInputText("actives_inherited[0]", &cat.actives_inherited[0], 0, nullptr, nullptr);
+    ImGuiInputText("actives_inherited[1]", &cat.actives_inherited[1], 0, nullptr, nullptr);
+    ImGuiInputText("actives_inherited[2]", &cat.actives_inherited[2], 0, nullptr, nullptr);
+    ImGuiInputText("actives_inherited[3]", &cat.actives_inherited[3], 0, nullptr, nullptr);
+    ImGuiInputText("passive_0", &cat.passive_0, 0, nullptr, nullptr);
+    ImGui::InputScalar("passive_0_level", ImGuiDataType_S64, &cat.passive_0_level);
+    ImGuiInputText("passive_1", &cat.passive_1, 0, nullptr, nullptr);
+    ImGui::InputScalar("passive_1_level", ImGuiDataType_S64, &cat.passive_1_level);
+    ImGuiInputText("mutation_0", &cat.mutation_0, 0, nullptr, nullptr);
+    ImGui::InputScalar("mutation_0_level", ImGuiDataType_S64, &cat.mutation_0_level);
+    ImGuiInputText("mutation_1", &cat.mutation_1, 0, nullptr, nullptr);
+    ImGui::InputScalar("mutation_1_level", ImGuiDataType_S64, &cat.mutation_1_level);
     ImguiTextStdFmt("Equipment");
     if(ImGui::BeginTable("equipment_table", 10)) {
         ImGui::TableSetupColumn("Thing", ImGuiTableColumnFlags_WidthStretch, 0.5f);
@@ -430,9 +431,9 @@ void edit_cat(CatData &cat) {
             ImGui::TableNextColumn();
             ImGui::InputScalar("##id", ImGuiDataType_S64, &p_base[i].id);
             ImGui::TableNextColumn();
-            ImguiTextStdFmt("{}", p_base[i].name);
+            ImGuiInputText("##name", &p_base[i].name, 0, nullptr, nullptr);
             ImGui::TableNextColumn();
-            ImguiTextStdFmt("{}", p_base[i].aux_string);
+            ImGuiInputText("##aux_string", &p_base[i].aux_string, 0, nullptr, nullptr);
             ImGui::TableNextColumn();
             ImGui::InputScalar("##uses_left", ImGuiDataType_S32, &p_base[i].uses_left);
             ImGui::TableNextColumn();
@@ -610,14 +611,14 @@ void show_cat(CatData &cat) {
         ImGui::TableSetupColumn("Expression", ImGuiTableColumnFlags_WidthStretch, 1.0f);
         ImGui::TableSetupColumn("Battles remaining", ImGuiTableColumnFlags_WidthStretch, 0.5f);
         ImGui::TableHeadersRow();
-        for(auto p_mod = cat.campaign_stats.event_stat_modifiers._Myfirst; p_mod < cat.campaign_stats.event_stat_modifiers._Mylast; p_mod++) {
+        for(auto &mod : cat.campaign_stats.event_stat_modifiers) {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(p_mod));
+            ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(&mod));
             ImGui::TableNextColumn();
-            ImguiTextStdFmt("{}", p_mod->expression.SaveToStr(true));
+            ImguiTextStdFmt("{}", mod.expression.SaveToStr(true));
             ImGui::TableNextColumn();
-            ImguiTextStdFmt("{}", p_mod->battles_remaining);
+            ImguiTextStdFmt("{}", mod.battles_remaining);
         }
         ImGui::EndTable();
     }
@@ -635,8 +636,8 @@ void show_cat(CatData &cat) {
     }
     ImguiTextStdFmt("Passive 0: {} {}", cat.passive_0, cat.passive_0_level);
     ImguiTextStdFmt("Passive 1: {} {}", cat.passive_1, cat.passive_1_level);
-    ImguiTextStdFmt("Mutation 0: {} {}", cat.passive_2, cat.passive_2_level);
-    ImguiTextStdFmt("Mutation 1: {} {}", cat.passive_3, cat.passive_3_level);
+    ImguiTextStdFmt("Mutation 0: {} {}", cat.mutation_0, cat.mutation_0_level);
+    ImguiTextStdFmt("Mutation 1: {} {}", cat.mutation_1, cat.mutation_1_level);
     ImguiTextStdFmt("Equipment");
     if(ImGui::BeginTable("equipment_table", 10)) {
         ImGui::TableSetupColumn("Thing", ImGuiTableColumnFlags_WidthStretch, 0.5f);
@@ -811,14 +812,14 @@ void show_data_explorer_window() {
                         ImGui::TableSetupColumn("End (incl)", ImGuiTableColumnFlags_WidthStretch, 2.0f);
                         ImGui::TableHeadersRow();
                         size_t i = 0;
-                        for(auto p_bucket = cats._Vec._Myfirst; p_bucket < cats._Vec._Mylast; p_bucket++) {
+                        for(auto &bucket : cats._Vec) {
                             ImGui::TableNextRow();
                             ImGui::TableNextColumn();
                             ImguiTextStdFmt("{:02x}", i);
                             ImGui::TableNextColumn();
-                            ImguiTextStdFmt("{}", reinterpret_cast<void *>(p_bucket->first));
+                            ImguiTextStdFmt("{}", reinterpret_cast<void *>(bucket.first));
                             ImGui::TableNextColumn();
-                            ImguiTextStdFmt("{}", reinterpret_cast<void *>(p_bucket->last));
+                            ImguiTextStdFmt("{}", reinterpret_cast<void *>(bucket.last));
                             i++;
                         }
                         ImGui::EndTable();
@@ -859,14 +860,14 @@ void show_data_explorer_window() {
                         ImGui::TableSetupColumn("End (incl)", ImGuiTableColumnFlags_WidthStretch, 2.0f);
                         ImGui::TableHeadersRow();
                         size_t i = 0;
-                        for(auto p_bucket = cats._Vec._Myfirst; p_bucket < cats._Vec._Mylast; p_bucket++) {
+                        for(auto &bucket : cats._Vec) {
                             ImGui::TableNextRow();
                             ImGui::TableNextColumn();
                             ImguiTextStdFmt("{:02x}", i);
                             ImGui::TableNextColumn();
-                            ImguiTextStdFmt("{}", reinterpret_cast<void *>(p_bucket->first));
+                            ImguiTextStdFmt("{}", reinterpret_cast<void *>(bucket.first));
                             ImGui::TableNextColumn();
-                            ImguiTextStdFmt("{}", reinterpret_cast<void *>(p_bucket->last));
+                            ImguiTextStdFmt("{}", reinterpret_cast<void *>(bucket.last));
                             i++;
                         }
                         ImGui::EndTable();
@@ -986,10 +987,10 @@ void show_data_explorer_window() {
                 if(ImGui::BeginTable("table1", 1)) {
                     ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                     ImGui::TableHeadersRow();
-                    for(auto p_name = names._Myfirst; p_name < names._Mylast; p_name++) {
+                    for(auto &name : names) {
                         ImGui::TableNextRow();
                         ImGui::TableNextColumn();
-                        ImguiTextStdFmt("{}", convert_utf16_wstring_to_utf8_string(*p_name));
+                        ImguiTextStdFmt("{}", convert_utf16_wstring_to_utf8_string(name));
                     }
                     ImGui::EndTable();
                 }
@@ -999,25 +1000,23 @@ void show_data_explorer_window() {
 
         if(ImGui::TreeNode("Managers")) {
             if(p_md != nullptr) {
-                auto &managers = p_md->director->managers;
-                for(auto pp_manager = managers._Myfirst; pp_manager < managers._Mylast; pp_manager++) {
-                    if(ImGui::TreeNode((**pp_manager).name.copy_to_native_string().c_str())) {
-                        auto p_manager = *pp_manager;
+                for(auto &p_manager : p_md->director->managers) {
+                    if(ImGui::TreeNode(p_manager->name.copy_to_native_string().c_str())) {
                         ImguiTextStdFmt("All components");
                         if(p_manager != nullptr && ImGui::BeginTable("table1", 3)) {
                             ImGui::TableSetupColumn("Pointer", ImGuiTableColumnFlags_WidthStretch, 2.0f);
                             ImGui::TableSetupColumn("Type ID", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                             ImGui::TableSetupColumn("Type Name", ImGuiTableColumnFlags_WidthStretch, 3.0f);
                             ImGui::TableHeadersRow();
-                            for(auto pp_component = p_manager->ComponentLists->begin(); pp_component < p_manager->ComponentLists->end(); pp_component++) {
+                            for(auto &p_component : *p_manager->ComponentLists) {
                                 ImGui::TableNextRow();
                                 ImGui::TableNextColumn();
-                                ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(*pp_component));
+                                ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(p_component));
                                 ImGui::TableNextColumn();
-                                ImguiTextStdFmt("{}", (*pp_component)->vtable->GetObjectType());
+                                ImguiTextStdFmt("{}", p_component->vtable->GetObjectType(p_component));
                                 ImGui::TableNextColumn();
                                 MsvcReleaseModeXString type_name = {};
-                                (*pp_component)->vtable->GetObjectTypeSTR(*pp_component, &type_name); // in-place string construction
+                                p_component->vtable->GetObjectTypeSTR(p_component, &type_name); // in-place string construction
                                 ImguiTextStdFmt("{}", type_name.as_native_string_view());
                                 type_name.destroy();
                             }
@@ -1032,22 +1031,21 @@ void show_data_explorer_window() {
 
         if(ImGui::TreeNode("House")) {
             if(p_md != nullptr) {
-                auto &managers = p_md->director->managers;
-                EntityManager *p_house = nullptr;
-                for(auto pp_manager = managers._Myfirst; pp_manager < managers._Mylast; pp_manager++) {
-                    if((*pp_manager)->name.as_native_string_view() == "House") {
-                        p_house = *pp_manager;
+                EntityManager *p_house_manager = nullptr;
+                for(auto p_manager : p_md->director->managers) {
+                    if(p_manager->name.as_native_string_view() == "House") {
+                        p_house_manager = p_manager;
                         break;
                     }
                 }
                 ImguiTextStdFmt("HouseCats");
-                if(p_house != nullptr && ImGui::BeginTable("table2", 1)) {
+                if(p_house_manager != nullptr && ImGui::BeginTable("table2", 1)) {
                     ImGui::TableSetupColumn("SQL ID", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                     ImGui::TableHeadersRow();
-                    for(auto hc = p_house->ComponentLists->begin(); hc < p_house->ComponentLists->end(); hc++) {
+                    for(auto p_housecat : *p_house_manager->ComponentLists) {
                         const char COMPONENT_TYPE_NAME_HOUSECAT[] = "HouseCat";
                         MsvcReleaseModeXString type_name = {};
-                        (*hc)->vtable->GetObjectTypeSTR(*hc, &type_name); // in-place string construction
+                        p_housecat->vtable->GetObjectTypeSTR(p_housecat, &type_name); // in-place string construction
                         if(type_name.as_native_string_view() != COMPONENT_TYPE_NAME_HOUSECAT) {
                             type_name.destroy();
                             continue;
@@ -1055,7 +1053,7 @@ void show_data_explorer_window() {
                         type_name.destroy();
                         ImGui::TableNextRow();
                         ImGui::TableNextColumn();
-                        auto housecat = static_cast<HouseCat *>(*hc);
+                        auto housecat = static_cast<HouseCat *>(p_housecat);
                         ImguiTextStdFmt("{}", housecat->sql_key);
                     }
                     ImGui::EndTable();
@@ -1217,24 +1215,23 @@ PedigreeIndex build_pedigree_index() {
     return PedigreeIndex {children_table, mate_table};
 }
 
-std::vector<SqlKeyCatDataPair> derive_picker_table(std::unordered_map<int64_t, CatData *> unified_cat_table, char *search_string, ImGuiTableSortSpecs *sortspecs) {
+std::vector<SqlKeyCatDataPair> derive_picker_table(std::unordered_map<int64_t, CatData *> unified_cat_table, std::string_view search_string, ImGuiTableSortSpecs *sortspecs) {
     // sort and filter the unified cat table by the provided specs
 
-    size_t search_string_len = std::strlen(search_string);
-    auto filter_reject = [search_string, search_string_len](SqlKeyCatDataPair &cat) -> bool {
+    auto filter_reject = [search_string](SqlKeyCatDataPair &cat) -> bool {
         // fast abort for empty search condition
-        if(search_string_len == 0) {
+        if(search_string.length() == 0) {
             return false;
         }
         // partial matching of numerals in the sql key
         std::string key_as_string = std::to_string(cat.sql_key);
-        if(std::search(key_as_string.begin(), key_as_string.end(), search_string, search_string + search_string_len) != key_as_string.end()) {
+        if(std::search(key_as_string.begin(), key_as_string.end(), search_string.begin(), search_string.end()) != key_as_string.end()) {
             return false;
         }
         // case-insensitive search of substrings in name
         std::string cat_name = convert_utf16_wstring_to_utf8_string(cat.cat->name);
         if(std::search(cat_name.begin(), cat_name.end(),
-            search_string, search_string + search_string_len,
+            search_string.begin(), search_string.end(),
             [](char a, char b) { return std::tolower(a) == std::tolower(b); }
         ) != cat_name.end()) {
             return false;
@@ -1304,7 +1301,7 @@ void show_feline_therapist_window() {
     ImVec2 viewport_size = ImGui::GetMainViewport()->Size;
     ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
     if(ImGui::Begin("Feline Therapist (Picker)", &P.show_feline_therapist)) {
-        static char searchbox_buf[256];
+        static std::string searchbox;
         // Navigation bar
         if(navigation_history.undo_can_step_backward()) {
             if(ImGui::Button("<")) {
@@ -1332,7 +1329,7 @@ void show_feline_therapist_window() {
         ImGui::SameLine();
         ImguiTextStdFmt("{}", navigation_cat_desc);
 
-        ImGui::InputTextWithHint("##searchbox", "Search", searchbox_buf, sizeof(searchbox_buf));
+        ImGui::InputTextWithHint("##searchbox", "Search", &searchbox, 0, nullptr, nullptr);
         if(ImGui::BeginTable("picker_table", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_Sortable | ImGuiTableFlags_Borders)) {
             ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_WidthFixed, 40.0f);
             ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.0f);
@@ -1341,10 +1338,10 @@ void show_feline_therapist_window() {
             std::vector<SqlKeyCatDataPair> picker_table;
             if (ImGuiTableSortSpecs* sort_specs = ImGui::TableGetSortSpecs()) {
                 // if (sort_specs->SpecsDirty) {} // TODO don't apply a list filter every frame
-                picker_table = derive_picker_table(unified_cat_table, searchbox_buf, sort_specs);
+                picker_table = derive_picker_table(unified_cat_table, searchbox, sort_specs);
                 sort_specs->SpecsDirty = false;
             } else {
-                picker_table = derive_picker_table(unified_cat_table, searchbox_buf, nullptr);
+                picker_table = derive_picker_table(unified_cat_table, searchbox, nullptr);
             }
             for(auto &kv : picker_table) {
                 ImGui::TableNextRow();
@@ -1698,14 +1695,13 @@ void show_tlog_config_window() {
     }
     ImVec2 viewport_size = ImGui::GetMainViewport()->Size;
     ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
-    if(ImGui::Begin("Transaction logger", &P.show_save_explorer)) {
-        // good enough for most cases
-        static char file_path[512] = "amoeba.tlog.lz4";
+    if(ImGui::Begin("Transaction logger", &P.show_tlog_config)) {
+        static std::string file_path = "amoeba.tlog.lz4";
         bool enable_transaction_logging = G.tlogger.is_opened();
         if(enable_transaction_logging) {
             ImGui::BeginDisabled();
         }
-        ImGui::InputText("File path", file_path, 512);
+        ImGui::InputText("File path", &file_path, 0, nullptr, nullptr);
         if(enable_transaction_logging) {
             ImGui::EndDisabled();
         }

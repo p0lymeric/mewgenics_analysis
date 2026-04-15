@@ -212,10 +212,10 @@ struct CatData {
     int64_t passive_0_level;
     MsvcReleaseModeXString passive_1;
     int64_t passive_1_level;
-    MsvcReleaseModeXString passive_2;
-    int64_t passive_2_level;
-    MsvcReleaseModeXString passive_3;
-    int64_t passive_3_level;
+    MsvcReleaseModeXString mutation_0;
+    int64_t mutation_0_level;
+    MsvcReleaseModeXString mutation_1;
+    int64_t mutation_1_level;
     Equipment head;
     Equipment face;
     Equipment neck;

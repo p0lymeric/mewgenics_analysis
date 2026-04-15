@@ -38,7 +38,7 @@ struct MsvcFuncNoAllocWrapper<_Callable, _Rx(_Types...)> :
     using WrapperVTable = MsvcFuncNoAlloc_vtable<WrapperCallable, _Rx(_Types...)>;
     using Wrapped = MsvcFuncNoAlloc<_Callable, _Rx(_Types...)>;
 
-    static Wrapper* _Copy(Wrapper const* thiss, void* _Where) {
+    static Wrapper* __cdecl _Copy(Wrapper const* thiss, void* _Where) {
         Wrapper *dest = reinterpret_cast<MsvcFuncNoAllocWrapper *>(_Where);
         dest->vtable = thiss->vtable;
         // _Callee is just 2 pointers, copying is trivial
@@ -50,7 +50,7 @@ struct MsvcFuncNoAllocWrapper<_Callable, _Rx(_Types...)> :
         __debugbreak();
         return dest;
     }
-    static Wrapper* _Move(Wrapper* thiss, void* _Where) {
+    static Wrapper* __cdecl _Move(Wrapper* thiss, void* _Where) {
         // oddly enough, _Move degenerates to a constant zero return
         // not sure why, but information comes from decompilation
         // TODO If a wrapped function is ever moved, worth taking a look
@@ -59,15 +59,15 @@ struct MsvcFuncNoAllocWrapper<_Callable, _Rx(_Types...)> :
         __debugbreak();
         return nullptr;
     }
-    static _Rx _Do_call(Wrapper* thiss, _Types*... _Args) {
+    static _Rx __cdecl _Do_call(Wrapper* thiss, _Types*... _Args) {
         // redirect control to a user-provided interceptor stored in the capture body
         return (*thiss->_Mystorage._Callee.interceptor)(thiss , _Args...);
     }
-    static const MsvcTypeInfo* _Target_type(Wrapper const* thiss) {
+    static const MsvcTypeInfo* __cdecl _Target_type(Wrapper const* thiss) {
         // redirect this call to wrapped instance
         return thiss->_Mystorage._Callee.wrapped->vtable->_Target_type(thiss->_Mystorage._Callee.wrapped);
     }
-    static void _Delete_this(Wrapper* thiss, bool _Dealloc) {
+    static void __cdecl _Delete_this(Wrapper* thiss, bool _Dealloc) {
         // since we are always small, _Dealloc will never be true (outer destructor checks _Ptrs[6] == this)
         // we never would've been allocated in a fashion that requires us to perform any deletes
         (void)thiss;
@@ -82,7 +82,7 @@ struct MsvcFuncNoAllocWrapper<_Callable, _Rx(_Types...)> :
             wrapped->_Mystorage._Ptrs[6] = nullptr;
         }
     }
-    static const void* _Get(Wrapper const* thiss) {
+    static const void* __cdecl _Get(Wrapper const* thiss) {
         // redirect this call to wrapped instance
         return thiss->_Mystorage._Callee.wrapped->vtable->_Get(thiss->_Mystorage._Callee.wrapped);
     }

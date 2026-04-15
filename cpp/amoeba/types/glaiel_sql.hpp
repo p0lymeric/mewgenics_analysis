@@ -110,7 +110,7 @@ struct std::formatter<SqlData> : std::formatter<std::string> {
 inline std::string SqlData::untrusted_format() {
     // for debug printing, to allow "maybe pointers" to SqlData to be scrutinized without punishment
     SqlData buf;
-    if(jf_read(reinterpret_cast<void *>(this), &buf)) {
+    if(jf_read(this, &buf)) {
         switch(buf.type) {
             case Text:
                 return std::format("{} <string data@{:p}, unused={}>", buf.type, buf.value.as_blob_ptr, buf.length);

@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <cwchar>
 #include <string>
 #include <format>
 
@@ -11,7 +12,6 @@
 //
 // These descriptions allow host process objects to be manipulated without dependence
 // on C++ stdlib implementation or C++ ABI used by the hook's native environment.
-// However, C ABI must match, for the case of invoking vtable function pointers.
 // ...
 // "for reasons of sanitization", not to be mistaken for "for reasons of sanity"
 //
@@ -47,6 +47,22 @@ struct MsvcReleaseModeXString {
         }
     }
 
+    char *begin() {
+        if(this->_Myres < 16) {
+            return &this->_Bx._Buf[0];
+        } else {
+            return this->_Bx._Ptr;
+        }
+    }
+
+    char *end() {
+        if(this->_Myres < 16) {
+            return &this->_Bx._Buf[this->_Mysize];
+        } else {
+            return this->_Bx._Ptr + this->_Mysize;
+        }
+    }
+
     std::string copy_to_native_string() const {
         return std::string(this->begin(), this->end());
     }
@@ -65,12 +81,14 @@ struct MsvcReleaseModeXString {
 
     MsvcReleaseModeXString() {}
 
+    // Empty string
     void construct() {
         this->_Bx._Buf[0] = '\0';
         this->_Mysize = 0;
         this->_Myres = 15;
     }
 
+    // Copy from sized buffer
     void construct(const char *data, size_t size) {
         if(size < 16) {
             std::memcpy(this->_Bx._Buf, data, size);
@@ -88,6 +106,7 @@ struct MsvcReleaseModeXString {
         }
     }
 
+    // Copy from null-terminated string
     void construct(const char *c_str) {
         construct(c_str, std::strlen(c_str));
     }
@@ -95,6 +114,37 @@ struct MsvcReleaseModeXString {
     void destroy() {
         if(this->_Myres >= 16) {
             host_free(this->_Bx._Ptr);
+        }
+    }
+
+    void resize(size_t size, const char fill) {
+        if(size == this->_Mysize) {
+            // no-op
+            return;
+        }
+        else if(size < this->_Mysize) {
+            // shrink, always in-place
+            this->begin()[size] = '\0';
+            this->_Mysize = size;
+        } else if(/*size > this->_Mysize && */size <= this->_Myres) {
+            // grow, but in-place within the existing reservation
+            std::memset(this->begin() + this->_Mysize, fill, size - this->_Mysize);
+            this->begin()[size] = '\0';
+            this->_Mysize = size;
+        } else /*if(size > this->_Mysize && size > this->_Myres)*/ {
+            // grow, moving into a new heap allocation
+            char *new_large_alloc = static_cast<char *>(host_alloc(size + 1));
+            std::memcpy(new_large_alloc, this->begin(), this->_Mysize);
+            std::memset(new_large_alloc + this->_Mysize, fill, size - this->_Mysize);
+            new_large_alloc[size] = '\0';
+
+            if(this->_Myres >= 16) {
+                host_free(this->_Bx._Ptr);
+            }
+
+            this->_Bx._Ptr = new_large_alloc;
+            this->_Myres = size;
+            this->_Mysize = size;
         }
     }
 };
@@ -133,6 +183,22 @@ struct MsvcReleaseModeXWString {
         }
     }
 
+    wchar_t *begin() {
+        if(this->_Myres < 8) {
+            return &this->_Bx._Buf[0];
+        } else {
+            return this->_Bx._Ptr;
+        }
+    }
+
+    wchar_t *end() {
+        if(this->_Myres < 8) {
+            return &this->_Bx._Buf[this->_Mysize];
+        } else {
+            return this->_Bx._Ptr + this->_Mysize;
+        }
+    }
+
     std::wstring copy_to_native_wstring() const {
         return std::wstring(this->begin(), this->end());
     }
@@ -151,22 +217,24 @@ struct MsvcReleaseModeXWString {
 
     MsvcReleaseModeXWString() {}
 
+    // Empty string
     void construct() {
         this->_Bx._Buf[0] = L'\0';
         this->_Mysize = 0;
         this->_Myres = 7;
     }
 
+    // Copy from sized buffer
     void construct(const wchar_t *data, size_t size) {
         if(size < 8) {
-            std::memcpy(this->_Bx._Buf, data, size * sizeof(wchar_t));
+            std::wmemcpy(this->_Bx._Buf, data, size);
             this->_Bx._Buf[size] = L'\0';
             this->_Mysize = size;
             this->_Myres = 7;
         } else {
             // + 1 for the nullterm
             this->_Bx._Ptr = static_cast<wchar_t *>(host_alloc((size + 1) * sizeof(wchar_t)));
-            std::memcpy(this->_Bx._Ptr, data, size * sizeof(wchar_t));
+            std::wmemcpy(this->_Bx._Ptr, data, size);
             this->_Bx._Ptr[size] = L'\0';
             // does not count the nullterm
             this->_Mysize = size;
@@ -174,6 +242,7 @@ struct MsvcReleaseModeXWString {
         }
     }
 
+    // Copy from null-terminated string
     void construct(const wchar_t *c_str) {
         construct(c_str, std::wcslen(c_str));
     }
@@ -181,6 +250,37 @@ struct MsvcReleaseModeXWString {
     void destroy() {
         if(this->_Myres >= 8) {
             host_free(this->_Bx._Ptr);
+        }
+    }
+
+    void resize(size_t size, const wchar_t fill) {
+        if(size == this->_Mysize) {
+            // no-op
+            return;
+        }
+        else if(size < this->_Mysize) {
+            // shrink, always in-place
+            this->begin()[size] = '\0';
+            this->_Mysize = size;
+        } else if(/*size > this->_Mysize && */size <= this->_Myres) {
+            // grow, but in-place within the existing reservation
+            std::wmemset(this->begin() + this->_Mysize, fill, size - this->_Mysize);
+            this->begin()[size] = '\0';
+            this->_Mysize = size;
+        } else /*if(size > this->_Mysize && size > this->_Myres)*/ {
+            // grow, moving into a new heap allocation
+            wchar_t *new_large_alloc = static_cast<wchar_t *>(host_alloc((size + 1) * sizeof(wchar_t)));
+            std::wmemcpy(new_large_alloc, this->begin(), this->_Mysize);
+            std::wmemset(new_large_alloc + this->_Mysize, fill, size - this->_Mysize);
+            new_large_alloc[size] = '\0';
+
+            if(this->_Myres >= 8) {
+                host_free(this->_Bx._Ptr);
+            }
+
+            this->_Bx._Ptr = new_large_alloc;
+            this->_Myres = size;
+            this->_Mysize = size;
         }
     }
 };
@@ -241,12 +341,12 @@ typedef void MsvcTypeInfo;
 template <class _Callable, class _Rx, class... _Types>
 struct MsvcFuncNoAlloc_vtable<_Callable, _Rx(_Types...)> {
     using Impl = MsvcFuncNoAlloc<_Callable, _Rx(_Types...)>;
-    Impl* (* _Copy)(Impl const* thiss, void* _Where);
-    Impl* (* _Move)(Impl* thiss, void* _Where);
-    _Rx (* _Do_call)(Impl* thiss, _Types*... _Args);
-    const MsvcTypeInfo* (* _Target_type)(Impl const* thiss);
-    void (* _Delete_this)(Impl* thiss, bool _Dealloc);
-    const void* (* _Get)(Impl const* thiss);
+    Impl* (__cdecl *_Copy)(Impl const* thiss, void* _Where);
+    Impl* (__cdecl *_Move)(Impl* thiss, void* _Where);
+    _Rx (__cdecl  *_Do_call)(Impl* thiss, _Types*... _Args);
+    const MsvcTypeInfo* (__cdecl *_Target_type)(Impl const* thiss);
+    void (__cdecl *_Delete_this)(Impl* thiss, bool _Dealloc);
+    const void* (__cdecl *_Get)(Impl const* thiss);
 };
 
 // MSVC List (std::list), laid out as compiled in Release mode
@@ -283,6 +383,22 @@ struct MsvcReleaseModeVector {
     // delete the copy constructor to block implicit copying
     MsvcReleaseModeVector(const MsvcReleaseModeVector&) = delete;
     MsvcReleaseModeVector& operator=(const MsvcReleaseModeVector&) = delete;
+
+    const _Value_type *begin() const {
+        return _Myfirst;
+    }
+
+    const _Value_type *end() const {
+        return _Mylast;
+    }
+
+    _Value_type *begin() {
+        return _Myfirst;
+    }
+
+    _Value_type *end() {
+        return _Mylast;
+    }
 
     size_t size() const {
         return this->_Mylast - this->_Myfirst;

@@ -25,12 +25,12 @@ struct Component { // Mewgenics
 
 template<typename T>
 struct ComponentVTable {
-    MsvcReleaseModeXString *(*GetObjectTypeSTR)(T const *thiss, MsvcReleaseModeXString *__return); // TEIN
-    int32_t (*GetObjectType)(); // TEIN
-    bool (*InObjectHierarchySTR)(T const *thiss, MsvcReleaseModeXString *target_typestr); // custom name
-    ComponentObjectHierarchy *(*GetObjectHierarchy)(); // TEIN, though interface has changed
-    void (*unknown_0)(T const *thiss);
-    void TDtor(T const *thiss); // C++ virtual destructor
+    MsvcReleaseModeXString *(__cdecl *GetObjectTypeSTR)(const T *thiss, MsvcReleaseModeXString *__return); // TEIN
+    int32_t (__cdecl *GetObjectType)(const T *thiss); // TEIN
+    bool (__cdecl *InObjectHierarchySTR)(const T *thiss, MsvcReleaseModeXString *target_typestr); // custom name
+    ComponentObjectHierarchy *(__cdecl *GetObjectHierarchy)(const T *thiss); // TEIN, though interface has changed
+    void (__cdecl *unknown_4)(T *thiss);
+    void (__cdecl *TDtor)(T *thiss); // C++ virtual destructor
     // much more...
 };
 // golden value from RTTI

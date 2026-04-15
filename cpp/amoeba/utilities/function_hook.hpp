@@ -9,6 +9,7 @@
 
 #include <vector>
 #include <unordered_map>
+#include <bit>
 
 #include <windows.h>
 
@@ -420,7 +421,7 @@ public:
     FP calculate_target(uintptr_t offset) override {
         // offset is an HMODULE retrieved with GetModuleHandle(NULL) outside this function
         // can potentially perform cross-dll hooking by storing a wide string module name too
-        return reinterpret_cast<FP>(reinterpret_cast<void *>(GetProcAddress(reinterpret_cast<HMODULE>(offset), this->lp_proc_name)));
+        return std::bit_cast<FP>(GetProcAddress(reinterpret_cast<HMODULE>(offset), this->lp_proc_name));
     }
 };
 

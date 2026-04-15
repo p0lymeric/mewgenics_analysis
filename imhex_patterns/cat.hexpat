@@ -70,11 +70,11 @@ Sex sex @ $;
 Sex sex_dup @ $;
 
 bitfield StatusFlagsB0 {
-    owned : 1;                    // 0; stayed in the house for at least one night, or donated
-    returned : 1;                 // 1; survived an adventure
+    owned : 1;                    // 0; stayed in the house for at least one night, or sent to an NPC
+    retired : 1;                  // 1; cannot be sent on adventure
     starving: 1;                  // 2
     unknown_3 : 1;                // 3
-    unknown_4 : 1;                // 4; not sure what this does, but can be 0 or 1
+    trashed : 1;                  // 4; sent to trash. cats who are trashed without the owned flag set are deleted from the save.
     dead : 1;                     // 5
     unknown_7_6: 2;               // 7:6
 };
@@ -90,7 +90,7 @@ bitfield StatusFlagsB1 {
 bitfield StatusFlagsB2 {
     donated_to_frank : 1;         // 16
     donated_to_baby_jack : 1;     // 17
-    died_in_battle : 1;           // 18
+    died_in_battle : 1;           // 18; does not include event deaths (e.g. Throbbing Domain sacrifice)
     on_adventure: 1;              // 19
     unknown_23_20 : 4;            // 23:20
 };
