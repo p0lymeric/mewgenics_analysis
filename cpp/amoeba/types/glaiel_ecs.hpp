@@ -100,39 +100,42 @@ struct Director { // Mewgenics
     MsvcReleaseModeVector<Scene *> scenes; // Wookash stream
 };
 
-struct ComponentPoolChunk {
-    void *p_base;
-    // NB only nodes with successors have a valid next pointer, the tail chunk holds a garbage not-necessarily-null value
-    ComponentPoolChunk *next;
+struct ReservedBlock { // Wookash stream
+    void *buffer;
+    // NB only nodes with successors have a valid next pointer,
+    // the tail chunk holds a garbage not-necessarily-null value
+    ReservedBlock *next_bucket;
 };
 
 // this is sized correctly for stepping through a chunk, so long as T is also sized correctly
 template<typename T>
-struct ComponentPoolSlot {
-    // only incremented by the free function, never sampled
+struct VGAAElement { // not in original codebase
+    // incremented by the free function, seemingly never sampled
+    // used for pointer invalidation per Tyler, though unsure if only for debugging
     uint64_t generation;
     union {
-        ComponentPoolSlot<T> *next_free;
+        VGAAElement<T> *next_free;
         T data;
     } u;
 };
 
 template<typename T>
-struct ComponentPool {
-    size_t chunk_size;
-    // allocations commit slot_size * min_slots_per_allocation bytes, rounded up to GetPageSize page granularity
-    size_t min_slots_per_allocation;
-    size_t slot_size; // == sizeof(T)
+struct VirtualGenerationalArenaAllocator { // Wookash stream
+    size_t ReservedMemorySize;
+    // allocations commit slot_size * ReservedMemorySize bytes,
+    // rounded up to GetPageSize page granularity
+    size_t MinItemsPerBlock;
+    size_t ElementSize; // == sizeof(VGAAElement<T>)
     // zero-init. the first allocation will also reserve the first chunk
-    void *tail_chunk_allocated_end; // ends on a page boundary
-    void *tail_chunk_reservation_end; // == tail_chunk->p_base + chunk_size
-    void *tail_chunk_used_end; // tracks water level until the next allocation
-    ComponentPoolChunk *head_chunk;
-    ComponentPoolChunk *tail_chunk;
-    ComponentPoolSlot<T> *p_next_free; // nullptr if the free list is empty
-    // where we're going, we don't need no protection!
-    /* MsvcMutex */char alloc_free_lock[80];
-    // only set by the free function, never unset or sampled
-    bool needs_sort; // Wookash stream
+    void *next_uncommitted_page; // ends on a page boundary
+    void *last_uncommitted_page; // == last_block->p_base + ReservedMemorySize
+    VGAAElement<T> *next_available_element; // tracks water level until the next allocation
+    ReservedBlock *initial_block;
+    ReservedBlock *last_block;
+    VGAAElement<T> *first_free_location; // nullptr if the free list is empty
+    // where we're going, we don't need no protection! (treat as opaque for now)
+    /* MsvcMutex */char mut[80];
+    // set by the free function, seemingly never unset or sampled
+    bool needs_sort;
 };
-static_assert(sizeof(ComponentPool<void>) == 0xa0);
+static_assert(sizeof(VirtualGenerationalArenaAllocator<void>) == 0xa0);

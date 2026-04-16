@@ -60,7 +60,7 @@ MAKE_DPORTAL(DATAOFF_glaiel__MewDirector__p_singleton,
 )
 
 MAKE_DPORTAL(DATAOFF_maybe_housecat_component_pool,
-    ComponentPool<HouseCat>, get_housecat_component_pool
+    VirtualGenerationalArenaAllocator<HouseCat>, get_housecat_component_pool
 )
 
 void show_about_modal(bool signal) {
@@ -1103,34 +1103,34 @@ void show_data_explorer_window() {
         }
 
         if(ImGui::TreeNode("Component pools")) {
-            ComponentPool<HouseCat> &housecat_pool = get_housecat_component_pool();
+            auto &housecat_pool = get_housecat_component_pool();
             if(ImGui::TreeNode("HouseCat")) {
-                ImguiTextStdFmt("Chunk size: {} B", housecat_pool.chunk_size);
-                ImguiTextStdFmt("Slots per allocation: {}", housecat_pool.min_slots_per_allocation);
-                ImguiTextStdFmt("Slot size (sizeof(HouseCat) + 8 B): {} B", housecat_pool.slot_size);
-                ImguiTextStdFmt("Tail chunk allocation end: {:p}", housecat_pool.tail_chunk_allocated_end);
-                ImguiTextStdFmt("Tail chunk reservation end: {:p}", housecat_pool.tail_chunk_reservation_end);
-                ImguiTextStdFmt("Tail chunk used end: {:p}", housecat_pool.tail_chunk_used_end);
-                ImguiTextStdFmt("Next free slot: {:p}", reinterpret_cast<void *>(housecat_pool.p_next_free));
-                ImguiTextStdFmt("Free list had forward link?: {}", housecat_pool.needs_sort);
+                ImguiTextStdFmt("ReservedMemorySize: {} B", housecat_pool.ReservedMemorySize);
+                ImguiTextStdFmt("MinItemsPerBlock: {}", housecat_pool.MinItemsPerBlock);
+                ImguiTextStdFmt("ElementSize (sizeof(HouseCat) + 8 B): {} B", housecat_pool.ElementSize);
+                ImguiTextStdFmt("next_uncommitted_page: {:p}", housecat_pool.next_uncommitted_page);
+                ImguiTextStdFmt("last_uncommitted_page: {:p}", housecat_pool.last_uncommitted_page);
+                ImguiTextStdFmt("next_available_element: {:p}", static_cast<void *>(housecat_pool.next_available_element));
+                ImguiTextStdFmt("first_free_location: {:p}", reinterpret_cast<void *>(housecat_pool.first_free_location));
+                ImguiTextStdFmt("needs_sort: {}", housecat_pool.needs_sort);
 
-                if(ImGui::TreeNode("Chunk list")) {
+                if(ImGui::TreeNode("Block list")) {
                     if(ImGui::BeginTable("table1", 2)) {
-                        ImGui::TableSetupColumn("p_descriptor", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-                        ImGui::TableSetupColumn("p_base", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                        ImGui::TableSetupColumn("p_reserved_block", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                        ImGui::TableSetupColumn("p_buffer", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                         ImGui::TableHeadersRow();
-                        auto p_descriptor = housecat_pool.head_chunk;
+                        auto p_descriptor = housecat_pool.initial_block;
                         while(p_descriptor != nullptr) {
                             ImGui::TableNextRow();
                             ImGui::TableNextColumn();
                             ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(p_descriptor));
                             ImGui::TableNextColumn();
-                            ImguiTextStdFmt("{:p}", p_descriptor->p_base);
+                            ImguiTextStdFmt("{:p}", p_descriptor->buffer);
                             // the current chunk's next pointer isn't zero-initialized, grrr...
-                            if(p_descriptor == housecat_pool.tail_chunk) {
+                            if(p_descriptor == housecat_pool.last_block) {
                                 break;
                             }
-                            p_descriptor = p_descriptor->next;
+                            p_descriptor = p_descriptor->next_bucket;
                         }
                         ImGui::EndTable();
                     }
@@ -1138,9 +1138,9 @@ void show_data_explorer_window() {
                 }
                 if(ImGui::TreeNode("Free list")) {
                     if(ImGui::BeginTable("table1", 1)) {
-                        ImGui::TableSetupColumn("p_slot", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                        ImGui::TableSetupColumn("p_location", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                         ImGui::TableHeadersRow();
-                        auto p_free = housecat_pool.p_next_free;
+                        auto p_free = housecat_pool.first_free_location;
                         while(p_free != nullptr) {
                             ImGui::TableNextRow();
                             ImGui::TableNextColumn();
@@ -1151,27 +1151,27 @@ void show_data_explorer_window() {
                     }
                     ImGui::TreePop();
                 }
-                // can theoretically walk other chunks, but would probably need a clipper to view several million cats
-                if(ImGui::TreeNode("Allocated slots (tail chunk)")) {
+                // can theoretically walk other blocks, but would probably need a clipper to view several million cats
+                if(ImGui::TreeNode("Allocated elements (last block)")) {
                     if(ImGui::BeginTable("table1", 3)) {
-                        ImGui::TableSetupColumn("p_slot", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                        ImGui::TableSetupColumn("p_element", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                         ImGui::TableSetupColumn("generation", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                         ImGui::TableSetupColumn("data_first_qword", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                         ImGui::TableHeadersRow();
-                        char *p_first_slot = reinterpret_cast<char *>(housecat_pool.tail_chunk_reservation_end) - housecat_pool.chunk_size;
+                        char *p_first_element = reinterpret_cast<char *>(housecat_pool.last_uncommitted_page) - housecat_pool.ReservedMemorySize;
                         for(
-                            auto p_slot = reinterpret_cast<ComponentPoolSlot<HouseCat> *>(p_first_slot);
-                            p_slot < housecat_pool.tail_chunk_used_end;
-                            p_slot++
+                            auto p_element = reinterpret_cast<VGAAElement<HouseCat> *>(p_first_element);
+                            p_element < housecat_pool.next_available_element;
+                            p_element++
                         ) {
                             ImGui::TableNextRow();
                             ImGui::TableNextColumn();
-                            ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(p_slot));
+                            ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(p_element));
                             ImGui::TableNextColumn();
-                            ImguiTextStdFmt("0x{:016x}", p_slot->generation);
+                            ImguiTextStdFmt("0x{:016x}", p_element->generation);
                             ImGui::TableNextColumn();
                             // read the first qword of data through the next_free data element
-                            ImguiTextStdFmt("0x{:016x}", reinterpret_cast<uint64_t>(p_slot->u.next_free));
+                            ImguiTextStdFmt("0x{:016x}", reinterpret_cast<uint64_t>(p_element->u.next_free));
                         }
                         ImGui::EndTable();
                     }
