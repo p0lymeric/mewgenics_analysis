@@ -18,6 +18,7 @@
 #include "misc/cpp/imgui_stdlib.h"
 
 #include <cstring>
+#include <functional>
 #include <list>
 #include <set>
 #include <unordered_map>
@@ -998,29 +999,68 @@ void show_data_explorer_window() {
             ImGui::TreePop();
         }
 
-        if(ImGui::TreeNode("Managers")) {
+        auto draw_component_table = [](podvector<Component *> *components) -> void {
+            if(ImGui::BeginTable("table1", 7)) {
+                ImGui::TableSetupColumn("Pointer", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+                ImGui::TableSetupColumn("Serial", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                ImGui::TableSetupColumn("???", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                ImGui::TableSetupColumn("EE/D/E/S", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                ImGui::TableSetupColumn("Type ID", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                ImGui::TableSetupColumn("Type Name", ImGuiTableColumnFlags_WidthStretch, 3.0f);
+                ImGui::TableSetupColumn("p_entity", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+                // ImGui::TableSetupColumn("p_scene", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+                // ImGui::TableSetupColumn("p_director", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+                // ImGui::TableSetupColumn("p_entity->scene", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+                ImGui::TableHeadersRow();
+                for(auto &p_component : *components) {
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImguiTextStdFmt("{:p}", static_cast<void *>(p_component));
+                    ImGui::TableNextColumn();
+                    ImguiTextStdFmt("{}", p_component->serial);
+                    ImGui::TableNextColumn();
+                    ImguiTextStdFmt("{:02x} {:02x}", p_component->unknown_0_flags, p_component->unknown_1_flags);
+                    ImGui::TableNextColumn();
+                    ImguiTextStdFmt("{:d} {:d} {:d} {:d}", p_component->entity_enabled, p_component->deleted, p_component->enabled, p_component->started);
+                    ImGui::TableNextColumn();
+                    ImguiTextStdFmt("{}", p_component->vtable->GetObjectType(p_component));
+                    ImGui::TableNextColumn();
+                    MsvcReleaseModeXString type_name = {};
+                    p_component->vtable->GetObjectTypeSTR(p_component, &type_name); // in-place string construction
+                    ImguiTextStdFmt("{}", type_name.as_native_string_view());
+                    type_name.destroy();
+                    ImGui::TableNextColumn();
+                    ImguiTextStdFmt("{:p}", static_cast<void *>(p_component->entity));
+                    // ImGui::TableNextColumn();
+                    // ImguiTextStdFmt("{:p}", static_cast<void *>(p_component->scene));
+                    // ImGui::TableNextColumn();
+                    // ImguiTextStdFmt("{:p}", static_cast<void *>(p_component->director));
+                    // ImGui::TableNextColumn();
+                    // ImguiTextStdFmt("{:p}", static_cast<void *>(p_component->entity->scene));
+                }
+                ImGui::EndTable();
+            }
+        };
+
+        if(ImGui::TreeNode("Scenes")) {
             if(p_md != nullptr) {
-                for(auto &p_manager : p_md->director->managers) {
-                    if(ImGui::TreeNode(p_manager->name.copy_to_native_string().c_str())) {
-                        ImguiTextStdFmt("All components");
-                        if(p_manager != nullptr && ImGui::BeginTable("table1", 3)) {
-                            ImGui::TableSetupColumn("Pointer", ImGuiTableColumnFlags_WidthStretch, 2.0f);
-                            ImGui::TableSetupColumn("Type ID", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-                            ImGui::TableSetupColumn("Type Name", ImGuiTableColumnFlags_WidthStretch, 3.0f);
-                            ImGui::TableHeadersRow();
-                            for(auto &p_component : *p_manager->ComponentLists) {
-                                ImGui::TableNextRow();
-                                ImGui::TableNextColumn();
-                                ImguiTextStdFmt("{:p}", reinterpret_cast<void *>(p_component));
-                                ImGui::TableNextColumn();
-                                ImguiTextStdFmt("{}", p_component->vtable->GetObjectType(p_component));
-                                ImGui::TableNextColumn();
-                                MsvcReleaseModeXString type_name = {};
-                                p_component->vtable->GetObjectTypeSTR(p_component, &type_name); // in-place string construction
-                                ImguiTextStdFmt("{}", type_name.as_native_string_view());
-                                type_name.destroy();
+                for(auto &p_scene : p_md->director->scenes) {
+                    if(ImGui::TreeNode(p_scene->name.copy_to_native_string().c_str())) {
+                        if(p_scene != nullptr) {
+                            ImguiTextStdFmt("p_scene: {:p}", static_cast<void *>(p_scene));
+                            if(ImGui::TreeNode("By Entity")) {
+                                for(auto &p_entity : p_scene->Entities) {
+                                    if(ImGui::TreeNode(std::format("{:p}", static_cast<void *>(p_entity)).c_str())) {
+                                        draw_component_table(&p_entity->components);
+                                        ImGui::TreePop();
+                                    }
+                                }
+                                ImGui::TreePop();
                             }
-                            ImGui::EndTable();
+                            if(ImGui::TreeNode("All Components")) {
+                                draw_component_table(p_scene->ComponentLists);
+                                ImGui::TreePop();
+                            }
                         }
                         ImGui::TreePop();
                     }
@@ -1031,18 +1071,18 @@ void show_data_explorer_window() {
 
         if(ImGui::TreeNode("House")) {
             if(p_md != nullptr) {
-                EntityManager *p_house_manager = nullptr;
-                for(auto p_manager : p_md->director->managers) {
-                    if(p_manager->name.as_native_string_view() == "House") {
-                        p_house_manager = p_manager;
+                Scene *p_house_scene = nullptr;
+                for(auto p_scene : p_md->director->scenes) {
+                    if(p_scene->name.as_native_string_view() == "House") {
+                        p_house_scene = p_scene;
                         break;
                     }
                 }
                 ImguiTextStdFmt("HouseCats");
-                if(p_house_manager != nullptr && ImGui::BeginTable("table2", 1)) {
+                if(p_house_scene != nullptr && ImGui::BeginTable("table2", 1)) {
                     ImGui::TableSetupColumn("SQL ID", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                     ImGui::TableHeadersRow();
-                    for(auto p_housecat : *p_house_manager->ComponentLists) {
+                    for(auto p_housecat : *p_house_scene->ComponentLists) {
                         const char COMPONENT_TYPE_NAME_HOUSECAT[] = "HouseCat";
                         MsvcReleaseModeXString type_name = {};
                         p_housecat->vtable->GetObjectTypeSTR(p_housecat, &type_name); // in-place string construction
@@ -1072,7 +1112,7 @@ void show_data_explorer_window() {
                 ImguiTextStdFmt("Tail chunk reservation end: {:p}", housecat_pool.tail_chunk_reservation_end);
                 ImguiTextStdFmt("Tail chunk used end: {:p}", housecat_pool.tail_chunk_used_end);
                 ImguiTextStdFmt("Next free slot: {:p}", reinterpret_cast<void *>(housecat_pool.p_next_free));
-                ImguiTextStdFmt("Free list had forward link?: {}", housecat_pool.probably_free_list_had_forward_link_flag);
+                ImguiTextStdFmt("Free list had forward link?: {}", housecat_pool.needs_sort);
 
                 if(ImGui::TreeNode("Chunk list")) {
                     if(ImGui::BeginTable("table1", 2)) {

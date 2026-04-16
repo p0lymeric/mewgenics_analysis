@@ -10,25 +10,43 @@
 //
 // polymeric 2026
 
-struct ComponentObjectHierarchy { // custom name
+struct Hierarchy { // Wookash stream
     // likely sorted from least derived to most derived
     int32_t types[16];
     int32_t size;
 };
 
+struct Entity;
+struct Scene;
+struct Director;
+
 template<typename T>
 struct ComponentVTable;
 
-struct Component { // Mewgenics
+struct Component { // Wookash stream
     ComponentVTable<Component> *vtable;
+    uint32_t serial;
+    uint8_t unknown_0_flags;
+    uint8_t unknown_1_flags;
+    bool entity_enabled;
+    bool deleted;
+    bool enabled;
+    bool started;
+    char _12[6];
+    Entity *entity;
+    Scene *scene;
+    Director *director;
+    double timescale;
+    // ...?
 };
+static_assert(offsetof(Component, entity) == 24);
 
 template<typename T>
 struct ComponentVTable {
-    MsvcReleaseModeXString *(__cdecl *GetObjectTypeSTR)(const T *thiss, MsvcReleaseModeXString *__return); // TEIN
-    int32_t (__cdecl *GetObjectType)(const T *thiss); // TEIN
-    bool (__cdecl *InObjectHierarchySTR)(const T *thiss, MsvcReleaseModeXString *target_typestr); // custom name
-    ComponentObjectHierarchy *(__cdecl *GetObjectHierarchy)(const T *thiss); // TEIN, though interface has changed
+    MsvcReleaseModeXString *(__cdecl *GetObjectTypeSTR)(const T *thiss, MsvcReleaseModeXString *__return); // Wookash stream
+    int32_t (__cdecl *GetObjectType)(const T *thiss); // Wookash stream
+    bool (__cdecl *TypeInHierarchy)(const T *thiss, MsvcReleaseModeXString *type); // Wookash stream
+    Hierarchy *(__cdecl *GetObjectHierarchy)(const T *thiss); // Wookash stream
     void (__cdecl *unknown_4)(T *thiss);
     void (__cdecl *TDtor)(T *thiss); // C++ virtual destructor
     // much more...
@@ -37,14 +55,23 @@ struct ComponentVTable {
 // static_assert(sizeof(ComponentVTable) == 0xe0);
 
 struct Entity {
-
+    void *vtable;
+    Scene *scene;
+    double timescale;
+    bool deleted;
+    bool enabled;
+    podvector<Component *> components;
+    // ...
 };
+// golden value from new
+// static_assert(sizeof(Entity) == 0x40);
 
 // Appears to be a composite of TEIN's EntityManager and EntityManagerReference
-struct EntityManager { // TEIN
-    char _0[0x18];
-    PodVector<Component *> *ComponentLists; // TEIN EntityManager
-    void *field_20;
+struct Scene { // Wookash stream
+    Director *director; // Wookash stream
+    podvector<Entity *> Entities; // Wookash stream
+    podvector<Component *> *ComponentLists; // Wookash stream
+    void *CachedActiveComponentLists; // Wookash stream
     char _28[0x18];
     char _40[0x40];
     char _80[0x40];
@@ -64,13 +91,13 @@ struct EntityManager { // TEIN
     char _400[0x40];
     char _440[0x40];
     char _480[0x30];
-    bool prevent_object_creation; // TEIN EntityManager
+    bool doing_scene_destruction; // Wookash stream
     char _4b1[7];
     MsvcReleaseModeXString name; // TEIN EntityManagerReference
 };
 
 struct Director { // Mewgenics
-    MsvcReleaseModeVector<EntityManager *> managers; // TEIN
+    MsvcReleaseModeVector<Scene *> scenes; // Wookash stream
 };
 
 struct ComponentPoolChunk {
@@ -106,6 +133,6 @@ struct ComponentPool {
     // where we're going, we don't need no protection!
     /* MsvcMutex */char alloc_free_lock[80];
     // only set by the free function, never unset or sampled
-    bool probably_free_list_had_forward_link_flag;
+    bool needs_sort; // Wookash stream
 };
 static_assert(sizeof(ComponentPool<void>) == 0xa0);

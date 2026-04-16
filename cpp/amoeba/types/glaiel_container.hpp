@@ -52,7 +52,7 @@ struct PodBufferPreallocated { // Mewgenics
 };
 
 template<typename T>
-struct PodVector { // TEIN podvector; 32 bit capacity and size fields
+struct podvector { // Wookash stream
     uint32_t capacity_;
     uint32_t size_;
 
@@ -73,4 +73,13 @@ struct PodVector { // TEIN podvector; 32 bit capacity and size fields
     T *end() {
         return this->data_ + this->size_;
     }
+};
+
+template<typename T>
+class flatset { // Wookash stream
+    podvector<T> sorted_;
+    podvector<T> back_;
+    podvector<T> unsorted_;
+    podvector<T> append_;
+    bool needs_flatten;
 };

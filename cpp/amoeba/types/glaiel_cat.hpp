@@ -6,6 +6,7 @@
 #include "types/phmap.hpp"
 #include "types/gon.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <format>
@@ -192,7 +193,7 @@ static_assert(sizeof(Equipment) == 0x60);
 
 struct CatData {
     uint64_t entropy;
-    PodVector<uint8_t> unknown_17;
+    podvector<uint8_t> unknown_17;
     MsvcReleaseModeXWString name;
     MsvcReleaseModeXString nameplate_symbol;
     int32_t sex;
@@ -336,16 +337,6 @@ struct CatDatabase {
 };
 
 struct HouseCat : Component {
-    char _8[4];
-    char _c[1];
-    char _d[1];
-    char _e[2];
-    char _10[1];
-    char _11[7];
-    char _18[8];
-    char _20[8];
-    char _28[8];
-    char _30[8];
     char _38[4];
     char _3c[4];
     char _40[2];
@@ -364,4 +355,7 @@ struct HouseCat : Component {
     char _padding[140];
 };
 // golden value from ctor/memset
+static_assert(offsetof(HouseCat, sql_key) == 128);
 static_assert(sizeof(HouseCat) == 0x118);
+
+struct House : Component {};
