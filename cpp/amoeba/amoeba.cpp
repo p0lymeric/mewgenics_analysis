@@ -20,15 +20,15 @@
 
 GlobalContext G;
 
-#ifdef __SANITIZE_ADDRESS__
+#ifdef ASAN_PRESENT
 // Nice to meet you! I'm the ADDRESS-SANITIZER, your trusty memory use auditor!
 // My friends call me A-san, and you can too!~
 #include <sanitizer/asan_interface.h>
 
 void asan_error_report_callback(const char *report) {
     D::error("{}", report);
-    if(G.tlogger != nullptr) {
-        G.tlogger->flush();
+    if(G.tlogger.is_opened()) {
+        G.tlogger.flush();
     }
 }
 #endif
@@ -45,11 +45,6 @@ bool on_attach() {
         G.exe_hash_mismatch_detected = (G.exe_actual_sha256.value() != EXE_SHA256);
     }
 
-    // Register the ASAN reporting callback
-    #ifdef __SANITIZE_ADDRESS__
-    __asan_set_error_report_callback(&asan_error_report_callback);
-    #endif
-
     // Create a Win32 console window with which to print log messages
     ALLOC_CONSOLE();
     // Link the transaction logger with the debug console backend
@@ -61,9 +56,14 @@ bool on_attach() {
     D::info("Hook base VA: 0x{:x}\n", G.dll_base_va);
     D::info("Executable base VA: 0x{:x}\n", host_exec_base_va);
     D::info("Executable SHA-256: {}\n", G.exe_actual_sha256.has_value() ? hash256bit_to_string(G.exe_actual_sha256.value()) : "<unknown>");
-
     // D::info("Mewgenics.exe path {}", get_module_file_path(NULL).string());
     // D::info("amoeba.dll path {}", get_module_file_path(reinterpret_cast<HMODULE>(G.dll_base_va)).string());
+
+    // Register the ASAN reporting callback
+    #ifdef ASAN_PRESENT
+    __asan_set_error_report_callback(&asan_error_report_callback);
+    D::info("ASAN is present\n");
+    #endif
 
     // Resolve portals (trampolines to functions and data)
     SPortalRegistry::resolve_portals(host_exec_base_va);
@@ -130,7 +130,7 @@ void final_rites(bool is_detach, bool cause_is_error) {
         FREE_CONSOLE();
     }
 
-    #ifdef __SANITIZE_ADDRESS__
+    #ifdef ASAN_PRESENT
     // Unregister our ASAN reporting callback
     // If we reattach, we'll re-register our callback
     __asan_set_error_report_callback(nullptr);

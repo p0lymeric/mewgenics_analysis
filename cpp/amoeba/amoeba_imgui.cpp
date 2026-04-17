@@ -1002,8 +1002,8 @@ void show_data_explorer_window() {
         auto draw_component_table = [](podvector<Component *> *components) -> void {
             if(ImGui::BeginTable("table1", 7)) {
                 ImGui::TableSetupColumn("Pointer", ImGuiTableColumnFlags_WidthStretch, 2.0f);
-                ImGui::TableSetupColumn("Serial", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-                ImGui::TableSetupColumn("???", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                ImGui::TableSetupColumn("ObjID", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                ImGui::TableSetupColumn("Overrides", ImGuiTableColumnFlags_WidthStretch, 1.2f);
                 ImGui::TableSetupColumn("EE/D/E/S", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                 ImGui::TableSetupColumn("Type ID", ImGuiTableColumnFlags_WidthStretch, 1.0f);
                 ImGui::TableSetupColumn("Type Name", ImGuiTableColumnFlags_WidthStretch, 3.0f);
@@ -1017,9 +1017,9 @@ void show_data_explorer_window() {
                     ImGui::TableNextColumn();
                     ImguiTextStdFmt("{:p}", static_cast<void *>(p_component));
                     ImGui::TableNextColumn();
-                    ImguiTextStdFmt("{}", p_component->serial);
+                    ImguiTextStdFmt("{}", p_component->_objid);
                     ImGui::TableNextColumn();
-                    ImguiTextStdFmt("{:02x} {:02x}", p_component->unknown_0_flags, p_component->unknown_1_flags);
+                    ImguiTextStdFmt("{:02x} {:02x}", p_component->override_tags_B0, p_component->override_tags_B1);
                     ImGui::TableNextColumn();
                     ImguiTextStdFmt("{:d} {:d} {:d} {:d}", p_component->entity_enabled, p_component->deleted, p_component->enabled, p_component->started);
                     ImGui::TableNextColumn();

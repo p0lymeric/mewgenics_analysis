@@ -76,10 +76,16 @@ struct podvector { // Wookash stream
 };
 
 template<typename T>
-class flatset { // Wookash stream
+struct flatset { // Wookash stream
     podvector<T> sorted_;
     podvector<T> back_;
     podvector<T> unsorted_;
     podvector<T> append_;
     bool needs_flatten;
+};
+
+template<typename T, int32_t C>
+struct ConstEvalArray {
+    T data[C];
+    int32_t size;
 };

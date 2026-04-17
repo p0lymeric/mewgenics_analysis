@@ -17,23 +17,6 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # possibly does nothing with MSVC
 set(CMAKE_C_EXTENSIONS OFF)
 
-# Notes for using ASAN:
-# 1. Successfully compiled with MSVC. Had linker errors with ClangCL.
-# 2. clang_rt.asan_dynamic-x86_64.dll is located in awkward spots:
-#        MSVC: C:\Program Files\Microsoft Visual Studio\*\Community\VC\Tools\MSVC\*\bin\Hostx64\x64\clang_rt.asan_dynamic-x86_64.dll
-#        ClangCL: C:\Program Files\Microsoft Visual Studio\*\Community\VC\Tools\Llvm\x64\lib\clang\*\lib\windows\clang_rt.asan_dynamic-x86_64.dll
-# 3. Must load clang_rt.asan_dynamic-x86_64.dll when Mewgenics.exe is launched.
-#    ASAN needs to witness all allocations in the process's life. Loading during mid-life will lead to a report and crash.
-# 4. To load amoeba and ASAN together from the start, best to use cosmic_ooze's Detours-based injection method.
-#    Place amoeba.dll, clang_rt.asan_dynamic-x86_64.dll, and cosmic_ooze.exe in the same directory as
-#    Mewgenics.exe and start Mewgenics with cosmic_ooze.exe.
-#    clang_rt.asan_dynamic-x86_64.dll will load via transitive dependency to amoeba.dll.
-# 5. amoeba.dll may still be ejected and reloaded via cosmic_ooze's LoadLibrary injection method after the initial load.
-# 6. ASAN will significantly increase Mewgenics load times and memory footprint.
-# 7. Get ready to pounce on that juicy memory bug!
-
-# add_compile_options(/fsanitize=address)
-
 if(MSVC)
     add_compile_options(/W4)
 elseif(MINGW)
@@ -87,6 +70,23 @@ target_link_libraries(${HOOK_NAME} PRIVATE
     libtomcrypt
     mewjector
 )
+
+# Notes for using ASAN:
+# 1. Must load (lib)clang_rt.asan_dynamic-x86_64.dll when Mewgenics.exe is launched.
+#    ASAN needs to witness all allocations in the process's life. Loading during mid-life will lead to a report and crash.
+# 2. To load amoeba and ASAN together from the start, best to use cosmic_ooze's Detours-based injection method.
+#    Place amoeba.dll, (lib)clang_rt.asan_dynamic-x86_64.dll, and cosmic_ooze.exe in the same directory as
+#    Mewgenics.exe and start Mewgenics with cosmic_ooze.exe.
+#    (lib)clang_rt.asan_dynamic-x86_64.dll will load via transitive dependency to amoeba.dll.
+# 3. amoeba.dll may still be ejected and reloaded via cosmic_ooze's LoadLibrary injection method after the initial load.
+# 4. All library code can be included except hooking libraries, but we only focus on our code.
+# 5. MSVC's ASAN will significantly increase Mewgenics load times. ClangCL/MinGW-Clang64's ASAN are much more performant.
+# 6. Get ready to pounce on that juicy memory bug!
+
+#include(Asan)
+#target_link_libraries(${HOOK_NAME} PRIVATE enable_asan)
+#target_link_libraries(dear_imgui PRIVATE enable_asan) # instrumented to avoid linker errors with imgui_stdlib.cpp
+#install(FILES ${ASAN_DYNAMIC_DLLS} TYPE BIN)
 
 install(TARGETS ${TARGET_NAME} ${HOOK_NAME} RUNTIME DESTINATION bin)
 

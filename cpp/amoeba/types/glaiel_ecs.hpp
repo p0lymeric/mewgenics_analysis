@@ -10,12 +10,6 @@
 //
 // polymeric 2026
 
-struct Hierarchy { // Wookash stream
-    // likely sorted from least derived to most derived
-    int32_t types[16];
-    int32_t size;
-};
-
 struct Entity;
 struct Scene;
 struct Director;
@@ -23,11 +17,29 @@ struct Director;
 template<typename T>
 struct ComponentVTable;
 
+// ENUMERATE_ALL_COMPONENT_EVENTS bitfield declaration order
+// earliest_update
+// early_update
+// update
+// late_update
+// always_update
+// latest_update
+// earliest_unlocked_update
+// early_unlocked_update
+// unlocked_update
+// late_unlocked_update
+// latest_unlocked_update
+// prerender
+// render_event
+// debug_render_event
+// postrender
+
 struct Component { // Wookash stream
     ComponentVTable<Component> *vtable;
-    uint32_t serial;
-    uint8_t unknown_0_flags;
-    uint8_t unknown_1_flags;
+    uint32_t _objid;
+    // bitfields derived from ENUMERATE_ALL_COMPONENT_EVENTS
+    uint8_t override_tags_B0;
+    uint8_t override_tags_B1;
     bool entity_enabled;
     bool deleted;
     bool enabled;
@@ -43,10 +55,13 @@ static_assert(offsetof(Component, entity) == 24);
 
 template<typename T>
 struct ComponentVTable {
+    using hierarchy_t = ConstEvalArray<int32_t, 16>;
+
     MsvcReleaseModeXString *(__cdecl *GetObjectTypeSTR)(const T *thiss, MsvcReleaseModeXString *__return); // Wookash stream
     int32_t (__cdecl *GetObjectType)(const T *thiss); // Wookash stream
     bool (__cdecl *TypeInHierarchy)(const T *thiss, MsvcReleaseModeXString *type); // Wookash stream
-    Hierarchy *(__cdecl *GetObjectHierarchy)(const T *thiss); // Wookash stream
+    // likely sorted from least derived to most derived
+    hierarchy_t *(__cdecl *GetObjectHierarchy)(const T *thiss); // Wookash stream
     void (__cdecl *unknown_4)(T *thiss);
     void (__cdecl *TDtor)(T *thiss); // C++ virtual destructor
     // much more...
