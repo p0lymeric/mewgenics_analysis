@@ -18,24 +18,30 @@ template<typename T>
 struct ComponentVTable;
 
 // ENUMERATE_ALL_COMPONENT_EVENTS bitfield declaration order
-// earliest_update
-// early_update
-// update
-// late_update
-// always_update
-// latest_update
-// earliest_unlocked_update
-// early_unlocked_update
-// unlocked_update
-// late_unlocked_update
-// latest_unlocked_update
-// prerender
-// render_event
-// debug_render_event
-// postrender
+namespace OverrideTags {
+    namespace B0 {
+        [[maybe_unused]] const uint8_t EarliestUpdate = 1 << 0;
+        [[maybe_unused]] const uint8_t EarlyUpdate = 1 << 1;
+        [[maybe_unused]] const uint8_t Update = 1 << 2;
+        [[maybe_unused]] const uint8_t LateUpdate = 1 << 3;
+        [[maybe_unused]] const uint8_t AlwaysUpdate = 1 << 4;
+        [[maybe_unused]] const uint8_t LatestUpdate = 1 << 5;
+        [[maybe_unused]] const uint8_t EarliestUnlockedUpdate = 1 << 6;
+        [[maybe_unused]] const uint8_t EarlyUnlockedUpdate = 1 << 7;
+    }
+    namespace B1 {
+        [[maybe_unused]] const uint8_t UnlockedUpdate = 1 << 0;
+        [[maybe_unused]] const uint8_t LateUnlockedUpdate = 1 << 1;
+        [[maybe_unused]] const uint8_t LatestUnlockedUpdate = 1 << 2;
+        [[maybe_unused]] const uint8_t Prerender = 1 << 3;
+        [[maybe_unused]] const uint8_t RenderEvent = 1 << 4;
+        [[maybe_unused]] const uint8_t DebugRenderEvent = 1 << 5;
+        [[maybe_unused]] const uint8_t Postrender = 1 << 6;
+    }
+}
 
 struct Component { // Wookash stream
-    ComponentVTable<Component> *vtable;
+    const ComponentVTable<Component> *vtable;
     uint32_t _objid;
     // bitfields derived from ENUMERATE_ALL_COMPONENT_EVENTS
     uint8_t override_tags_B0;
@@ -57,17 +63,42 @@ template<typename T>
 struct ComponentVTable {
     using hierarchy_t = ConstEvalArray<int32_t, 16>;
 
+    static void __cdecl blank_impl(T *thiss) {
+        (void)thiss;
+        // __debugbreak();
+    }
+
     MsvcReleaseModeXString *(__cdecl *GetObjectTypeSTR)(const T *thiss, MsvcReleaseModeXString *__return); // Wookash stream
     int32_t (__cdecl *GetObjectType)(const T *thiss); // Wookash stream
     bool (__cdecl *TypeInHierarchy)(const T *thiss, MsvcReleaseModeXString *type); // Wookash stream
-    // likely sorted from least derived to most derived
-    hierarchy_t *(__cdecl *GetObjectHierarchy)(const T *thiss); // Wookash stream
-    void (__cdecl *unknown_4)(T *thiss);
-    void (__cdecl *TDtor)(T *thiss); // C++ virtual destructor
-    // much more...
+    const hierarchy_t *(__cdecl *GetObjectHierarchy)(const T *thiss); // Wookash stream
+    int32_t (__cdecl *ExecutionOrderPriority)(const T *thiss); // Wookash stream
+    void *(__cdecl *VDtor)(T *thiss, uint32_t flags); // C++ virtual destructor
+    void (__cdecl *start)(T *thiss) = *blank_impl; // TEIN, called after creation
+    void (__cdecl *cull)(T *thiss) = *blank_impl; // TEIN, called before destruction
+    void (__cdecl *earliest_update)(T *thiss) = *blank_impl;
+    void (__cdecl *early_update)(T *thiss) = *blank_impl;
+    void (__cdecl *update)(T *thiss) = *blank_impl;
+    void (__cdecl *late_update)(T *thiss) = *blank_impl;
+    void (__cdecl *latest_update)(T *thiss) = *blank_impl; // yes, latest_update is prototyped before always_update
+    void (__cdecl *always_update)(T *thiss) = *blank_impl;
+    void (__cdecl *earliest_unlocked_update)(T *thiss) = *blank_impl;
+    void (__cdecl *early_unlocked_update)(T *thiss) = *blank_impl;
+    void (__cdecl *unlocked_update)(T *thiss) = *blank_impl;
+    void (__cdecl *late_unlocked_update)(T *thiss) = *blank_impl;
+    void (__cdecl *latest_unlocked_update)(T *thiss) = *blank_impl;
+    void (__cdecl *prerender)(T *thiss) = *blank_impl;
+    void (__cdecl *unknown_20)(T *thiss) = *blank_impl; // TEIN has autorender in this position
+    void (__cdecl *unknown_21)(T *thiss) = *blank_impl;
+    void (__cdecl *render_event)(T *thiss) = *blank_impl; // yes, prototype location is correct
+    void (__cdecl *unknown_23)(T *thiss) = *blank_impl; // maybe debug_render_event, but cannot figure out how to make the game call it
+    void (__cdecl *postrender)(T *thiss) = *blank_impl;
+    void (__cdecl *unknown_25)(T *thiss) = *blank_impl;
+    void (__cdecl *unknown_26)(T *thiss) = *blank_impl;
+    void (__cdecl *unknown_27)(T *thiss) = *blank_impl;
 };
 // golden value from RTTI
-// static_assert(sizeof(ComponentVTable) == 0xe0);
+static_assert(sizeof(ComponentVTable<void>) == 0xe0);
 
 struct Entity {
     void *vtable;
@@ -83,33 +114,35 @@ struct Entity {
 
 // Appears to be a composite of TEIN's EntityManager and EntityManagerReference
 struct Scene { // Wookash stream
+    using ComponentCallbackList = flatset<Component *>;
+    static_assert(sizeof(ComponentCallbackList) == 72);
+
     Director *director; // Wookash stream
     podvector<Entity *> Entities; // Wookash stream
     podvector<Component *> *ComponentLists; // Wookash stream
     void *CachedActiveComponentLists; // Wookash stream
-    char _28[0x18];
-    char _40[0x40];
-    char _80[0x40];
-    char _c0[0x40];
-    char _100[0x40];
-    char _140[0x40];
-    char _180[0x40];
-    char _1c0[0x40];
-    char _200[0x40];
-    char _240[0x40];
-    char _280[0x40];
-    char _2c0[0x40];
-    char _300[0x40];
-    char _340[0x40];
-    char _380[0x40];
-    char _3c0[0x40];
-    char _400[0x40];
-    char _440[0x40];
+    ComponentCallbackList CompList_earliest_update;
+    ComponentCallbackList CompList_early_update;
+    ComponentCallbackList CompList_update;
+    ComponentCallbackList CompList_late_update;
+    ComponentCallbackList CompList_always_update;
+    ComponentCallbackList CompList_latest_update;
+    ComponentCallbackList CompList_earliest_unlocked_update;
+    ComponentCallbackList CompList_early_unlocked_update;
+    ComponentCallbackList CompList_unlocked_update;
+    ComponentCallbackList CompList_late_unlocked_update;
+    ComponentCallbackList CompList_latest_unlocked_update;
+    ComponentCallbackList CompList_prerender;
+    ComponentCallbackList CompList_render_event;
+    ComponentCallbackList CompList_debug_render_event;
+    ComponentCallbackList CompList_postrender;
+    char _460[0x20];
     char _480[0x30];
     bool doing_scene_destruction; // Wookash stream
     char _4b1[7];
     MsvcReleaseModeXString name; // TEIN EntityManagerReference
 };
+static_assert(offsetof(Scene, doing_scene_destruction) == 1200);
 
 struct Director { // Mewgenics
     MsvcReleaseModeVector<Scene *> scenes; // Wookash stream

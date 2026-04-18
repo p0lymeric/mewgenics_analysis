@@ -37,3 +37,13 @@ inline void *host_alloc(size_t size) {
 inline void host_free(void *ptr) {
     HeapFree(GetProcessHeap(), 0, ptr);
 }
+
+// Reallocate within the host process' heap
+inline void *host_realloc(void *ptr, size_t size) {
+    // based off MSVC's internal realloc (which conditionally dispatches to HeapAlloc or HeapReAlloc)
+    if(ptr == nullptr) {
+        return HeapAlloc(GetProcessHeap(), 0, size);
+    } else {
+        return HeapReAlloc(GetProcessHeap(), 0, ptr, size);
+    }
+}
