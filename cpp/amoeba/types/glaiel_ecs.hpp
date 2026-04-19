@@ -68,19 +68,20 @@ struct ComponentVTable {
         // __debugbreak();
     }
 
-    MsvcReleaseModeXString *(__cdecl *GetObjectTypeSTR)(const T *thiss, MsvcReleaseModeXString *__return); // Wookash stream
-    int32_t (__cdecl *GetObjectType)(const T *thiss); // Wookash stream
-    bool (__cdecl *TypeInHierarchy)(const T *thiss, MsvcReleaseModeXString *type); // Wookash stream
-    const hierarchy_t *(__cdecl *GetObjectHierarchy)(const T *thiss); // Wookash stream
-    int32_t (__cdecl *ExecutionOrderPriority)(const T *thiss); // Wookash stream
-    void *(__cdecl *VDtor)(T *thiss, uint32_t flags); // C++ virtual destructor
-    void (__cdecl *start)(T *thiss) = *blank_impl; // TEIN, called after creation
-    void (__cdecl *cull)(T *thiss) = *blank_impl; // TEIN, called before destruction
+    // Wookash stream
+    MsvcReleaseModeXString *(__cdecl *GetObjectTypeSTR)(const T *thiss, MsvcReleaseModeXString *__return);
+    int32_t (__cdecl *GetObjectType)(const T *thiss);
+    bool (__cdecl *TypeInHierarchy)(const T *thiss, MsvcReleaseModeXString *type);
+    const hierarchy_t *(__cdecl *GetObjectHierarchy)(const T *thiss);
+    int32_t (__cdecl *ExecutionOrderPriority)(const T *thiss);
+    void *(__cdecl *VDtor)(T *thiss, uint32_t flags); // C++ virtual destructor, MSVC specific flags
+    void (__cdecl *start)(T *thiss) = *blank_impl;
+    void (__cdecl *end)(T *thiss) = *blank_impl;
     void (__cdecl *earliest_update)(T *thiss) = *blank_impl;
     void (__cdecl *early_update)(T *thiss) = *blank_impl;
     void (__cdecl *update)(T *thiss) = *blank_impl;
     void (__cdecl *late_update)(T *thiss) = *blank_impl;
-    void (__cdecl *latest_update)(T *thiss) = *blank_impl; // yes, latest_update is prototyped before always_update
+    void (__cdecl *latest_update)(T *thiss) = *blank_impl;
     void (__cdecl *always_update)(T *thiss) = *blank_impl;
     void (__cdecl *earliest_unlocked_update)(T *thiss) = *blank_impl;
     void (__cdecl *early_unlocked_update)(T *thiss) = *blank_impl;
@@ -88,14 +89,14 @@ struct ComponentVTable {
     void (__cdecl *late_unlocked_update)(T *thiss) = *blank_impl;
     void (__cdecl *latest_unlocked_update)(T *thiss) = *blank_impl;
     void (__cdecl *prerender)(T *thiss) = *blank_impl;
-    void (__cdecl *unknown_20)(T *thiss) = *blank_impl; // TEIN has autorender in this position
-    void (__cdecl *unknown_21)(T *thiss) = *blank_impl;
-    void (__cdecl *render_event)(T *thiss) = *blank_impl; // yes, prototype location is correct
-    void (__cdecl *unknown_23)(T *thiss) = *blank_impl; // maybe debug_render_event, but cannot figure out how to make the game call it
+    void (__cdecl *render)(T *thiss) = *blank_impl;
+    void (__cdecl *debug_render)(T *thiss) = *blank_impl;
+    void (__cdecl *render_event)(T *thiss) = *blank_impl;
+    void (__cdecl *debug_render_event)(T *thiss) = *blank_impl;
     void (__cdecl *postrender)(T *thiss) = *blank_impl;
-    void (__cdecl *unknown_25)(T *thiss) = *blank_impl;
-    void (__cdecl *unknown_26)(T *thiss) = *blank_impl;
-    void (__cdecl *unknown_27)(T *thiss) = *blank_impl;
+    void (__cdecl *on_enable)(T *thiss) = *blank_impl;
+    void (__cdecl *on_disable)(T *thiss) = *blank_impl;
+    void (__cdecl *on_transform_updated)(T *thiss) = *blank_impl;
 };
 // golden value from RTTI
 static_assert(sizeof(ComponentVTable<void>) == 0xe0);
