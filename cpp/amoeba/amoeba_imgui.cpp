@@ -1608,6 +1608,22 @@ void show_feline_therapist_window() {
     ImGui::End();
 }
 
+MAKE_FPORTAL(0x9c2370, Scene *, __cdecl, maybe_Director_create_Scene, (Director *director, MsvcReleaseModeXString *name), (director, name))
+MAKE_FPORTAL(0x194fb0, Component *, __cdecl, glaiel__Scene__CreateComponent_FishingMinigameScene, (Scene *thiss, Entity *entity), (thiss, entity))
+MAKE_FPORTAL(0x31b2d0, Component *, __cdecl, glaiel__Scene__CreateComponent_BreedingTest, (Scene *thiss, Entity *entity), (thiss, entity))
+
+MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateEntity,
+    Entity *, __cdecl, glaiel__Scene__CreateEntity,
+    (Scene *thiss),
+    (thiss)
+)
+
+MAKE_FPORTAL(0x9c2820,
+    Entity *, __cdecl, glaiel__Director__DestroyScene,
+    (Director *thiss, MsvcReleaseModeXString *scene_name),
+    (thiss, scene_name)
+)
+
 void show_save_explorer_window() {
     if(!P.show_save_explorer) {
         return;
@@ -1721,6 +1737,57 @@ void show_save_explorer_window() {
                 if(ImGui::Button("Despawn!")) {
                     despawn_housecat(cat_sql_key_to_despawn);
                 }
+                ImGui::TreePop();
+            }
+            if(ImGui::TreeNode("Teleporter")) {
+                if(ImGui::Button("Fishing minigame?")) {
+                    MsvcReleaseModeXString scene_name = {};
+                    scene_name.construct("MiniGame");
+                    Scene *scene = maybe_Director_create_Scene(get_p_mewdirector_singleton()->director, &scene_name);
+                    scene_name.destroy();
+                    if(scene->doing_scene_destruction) {
+                        //break
+                    }
+                    glaiel__Scene__CreateComponent_FishingMinigameScene(scene, glaiel__Scene__CreateEntity(scene));
+                }
+                if(ImGui::Button("Destroy MiniGame")) {
+                    MsvcReleaseModeXString scene_name = {};
+                    scene_name.construct("MiniGame");
+                    glaiel__Director__DestroyScene(get_p_mewdirector_singleton()->director, &scene_name);
+                    scene_name.destroy();
+                }
+
+                if(ImGui::Button("Breeding test?")) {
+                    MsvcReleaseModeXString scene_name = {};
+                    scene_name.construct("Test");
+                    Scene *scene = maybe_Director_create_Scene(get_p_mewdirector_singleton()->director, &scene_name);
+                    scene_name.destroy();
+                    if(scene->doing_scene_destruction) {
+                        //break
+                    }
+                    glaiel__Scene__CreateComponent_BreedingTest(scene, glaiel__Scene__CreateEntity(scene));
+                }
+                if(ImGui::Button("Destroy Test")) {
+                    MsvcReleaseModeXString scene_name = {};
+                    scene_name.construct("Test");
+                    glaiel__Director__DestroyScene(get_p_mewdirector_singleton()->director, &scene_name);
+                    scene_name.destroy();
+                }
+
+                if(ImGui::Button("Flappy Cat")) {
+                    create_flappy_cat_scene_scene();
+                }
+                if(ImGui::Button("Destroy Flappy Cat")) {
+                    MsvcReleaseModeXString scene_name = {};
+                    scene_name.construct("polymeric.amoeba.FlappyCat");
+                    glaiel__Director__DestroyScene(get_p_mewdirector_singleton()->director, &scene_name);
+                    scene_name.destroy();
+                }
+
+                ImGui::InputScalar("cat x", ImGuiDataType_Double, &G.cat_x);
+                ImGui::InputScalar("cat y", ImGuiDataType_Double, &G.cat_y);
+                ImGui::InputScalar("cat rot", ImGuiDataType_Double, &G.cat_rot);
+
                 ImGui::TreePop();
             }
             ImGui::TreePop();

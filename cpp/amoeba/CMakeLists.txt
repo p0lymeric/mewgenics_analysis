@@ -29,6 +29,7 @@ add_library(${HOOK_NAME} SHARED
     amoeba.def
     amoeba_sql_logger.cpp
     amoeba_imgui.cpp
+    amoeba_flappy_cat.cpp
     utilities/transaction_logger.cpp
     utilities/sqlite3_conn_wrapper.cpp
     utilities/mewjector_support.c

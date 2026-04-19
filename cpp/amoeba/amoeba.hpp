@@ -60,6 +60,10 @@ void do_process_termination();
 // Call to gracefully remove Amoeba from the process
 // Exporter: amoeba.cpp
 void initiate_dll_eject();
+// FIXME lol
+// Exporter: amoeba_flappy_cat.hpp
+#include "types/glaiel.hpp"
+Scene *create_flappy_cat_scene_scene();
 
 // TYPE DECLARATIONS
 
@@ -90,4 +94,9 @@ struct GlobalContext {
 
     // sqlite3 connection wrapper.
     Sqlite3ConnWrapper sqlite3;
+
+    // FIXME I have no dignity
+    double cat_x;
+    double cat_y;
+    double cat_rot;
 };
