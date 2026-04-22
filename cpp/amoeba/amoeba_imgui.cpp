@@ -1608,9 +1608,17 @@ void show_feline_therapist_window() {
     ImGui::End();
 }
 
-MAKE_FPORTAL(0x9c2370, Scene *, __cdecl, maybe_Director_create_Scene, (Director *director, MsvcReleaseModeXString *name), (director, name))
-MAKE_FPORTAL(0x194fb0, Component *, __cdecl, glaiel__Scene__CreateComponent_FishingMinigameScene, (Scene *thiss, Entity *entity), (thiss, entity))
-MAKE_FPORTAL(0x31b2d0, Component *, __cdecl, glaiel__Scene__CreateComponent_BreedingTest, (Scene *thiss, Entity *entity), (thiss, entity))
+MAKE_FPORTAL(ADDRESS_maybe_Director_create_Scene,
+    Scene *, __cdecl, maybe_Director_create_Scene,
+    (Director *director, MsvcReleaseModeXString *name),
+    (director, name)
+)
+
+MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateComponent_FishingMinigameScene,
+    Component *, __cdecl, glaiel__Scene__CreateComponent_FishingMinigameScene,
+    (Scene *thiss, Entity *entity),
+    (thiss, entity)
+)
 
 MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateEntity,
     Entity *, __cdecl, glaiel__Scene__CreateEntity,
@@ -1618,7 +1626,7 @@ MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateEntity,
     (thiss)
 )
 
-MAKE_FPORTAL(0x9c2820,
+MAKE_FPORTAL(ADDRESS_glaiel__Director__DestroyScene,
     Entity *, __cdecl, glaiel__Director__DestroyScene,
     (Director *thiss, MsvcReleaseModeXString *scene_name),
     (thiss, scene_name)
@@ -1757,23 +1765,6 @@ void show_save_explorer_window() {
                     scene_name.destroy();
                 }
 
-                if(ImGui::Button("Breeding test?")) {
-                    MsvcReleaseModeXString scene_name = {};
-                    scene_name.construct("Test");
-                    Scene *scene = maybe_Director_create_Scene(get_p_mewdirector_singleton()->director, &scene_name);
-                    scene_name.destroy();
-                    if(scene->doing_scene_destruction) {
-                        //break
-                    }
-                    glaiel__Scene__CreateComponent_BreedingTest(scene, glaiel__Scene__CreateEntity(scene));
-                }
-                if(ImGui::Button("Destroy Test")) {
-                    MsvcReleaseModeXString scene_name = {};
-                    scene_name.construct("Test");
-                    glaiel__Director__DestroyScene(get_p_mewdirector_singleton()->director, &scene_name);
-                    scene_name.destroy();
-                }
-
                 if(ImGui::Button("Flappy Cat")) {
                     create_flappy_cat_scene_scene();
                 }
@@ -1784,9 +1775,14 @@ void show_save_explorer_window() {
                     scene_name.destroy();
                 }
 
-                ImGui::InputScalar("cat x", ImGuiDataType_Double, &G.cat_x);
-                ImGui::InputScalar("cat y", ImGuiDataType_Double, &G.cat_y);
-                ImGui::InputScalar("cat rot", ImGuiDataType_Double, &G.cat_rot);
+                ImGui::InputScalar("cat_jump_v_y", ImGuiDataType_Double, &G.cat_jump_v_y);
+                ImGui::InputScalar("small_g", ImGuiDataType_Double, &G.small_g);
+                ImGui::InputScalar("up_rotv", ImGuiDataType_Double, &G.up_rotv);
+                ImGui::InputScalar("down_rotv", ImGuiDataType_Double, &G.down_rotv);
+                ImGui::Checkbox("nyan_cat_mode", &G.nyan_cat_mode);
+                if(ImGui::Button("Jump")) {
+                    G.cat_jump = true;
+                }
 
                 ImGui::TreePop();
             }
@@ -1839,7 +1835,7 @@ void deinitialize_imgui() {
     }
 }
 
-MAKE_PHOOK(1, "SDL_GL_SwapWindow",
+MAKE_PHOOK(0, "SDL_GL_SwapWindow",
     bool, __cdecl, SDL_GL_SwapWindow,
     SDL_Window *window
 ) {
@@ -1907,7 +1903,7 @@ MAKE_PHOOK(1, "SDL_GL_SwapWindow",
     return result;
 }
 
-MAKE_PHOOK(1, "SDL_PollEvent",
+MAKE_PHOOK(0, "SDL_PollEvent",
     bool, __cdecl, SDL_PollEvent,
     SDL_Event *event
 ) {

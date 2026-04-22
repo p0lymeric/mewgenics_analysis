@@ -55,9 +55,8 @@ struct Component { // Wookash stream
     Scene *scene;
     Director *director;
     double timescale;
-    // ...?
 };
-static_assert(offsetof(Component, entity) == 24);
+static_assert(sizeof(Component) == 56);
 
 template<typename T>
 struct ComponentVTable {
@@ -101,17 +100,28 @@ struct ComponentVTable {
 // golden value from RTTI
 static_assert(sizeof(ComponentVTable<void>) == 0xe0);
 
+struct EntityVTable;
+
 struct Entity {
-    void *vtable;
+    EntityVTable *vtable;
     Scene *scene;
     double timescale;
     bool deleted;
     bool enabled;
     podvector<Component *> components;
-    // ...
+    podvector<void *> unknown_0;
 };
 // golden value from new
-// static_assert(sizeof(Entity) == 0x40);
+static_assert(sizeof(Entity) == 0x40);
+
+struct EntityVTable {
+    void *(__cdecl *VDtor)(Entity *thiss, uint32_t flags); // C++ virtual destructor, MSVC specific flags
+};
+
+struct CachedActiveComponentList {
+    /*CachedPointerVector<Component *>*/void *ActiveComponents;
+    bool changed;
+};
 
 // Appears to be a composite of TEIN's EntityManager and EntityManagerReference
 struct Scene { // Wookash stream
@@ -121,7 +131,7 @@ struct Scene { // Wookash stream
     Director *director; // Wookash stream
     podvector<Entity *> Entities; // Wookash stream
     podvector<Component *> *ComponentLists; // Wookash stream
-    void *CachedActiveComponentLists; // Wookash stream
+    CachedActiveComponentList *CachedActiveComponentLists; // Wookash stream
     ComponentCallbackList CompList_earliest_update;
     ComponentCallbackList CompList_early_update;
     ComponentCallbackList CompList_update;
@@ -137,8 +147,12 @@ struct Scene { // Wookash stream
     ComponentCallbackList CompList_render_event;
     ComponentCallbackList CompList_debug_render_event;
     ComponentCallbackList CompList_postrender;
-    char _460[0x20];
-    char _480[0x30];
+    double SortDepth;
+    bool any_deleted_entities;
+    char _469[7];
+    podvector<bool> any_deleted_components;
+    int deleted_components_estimate;
+    char _484[0x2c];
     bool doing_scene_destruction; // Wookash stream
     char _4b1[7];
     MsvcReleaseModeXString name; // TEIN EntityManagerReference

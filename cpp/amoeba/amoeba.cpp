@@ -83,11 +83,6 @@ bool on_attach() {
         }
         G.dll_can_self_eject = true;
     }
-    // These hooks bind to RIP-relative jumps, which Mewjector does not currently support
-    if(!SFunctionHookRegistry::install_hooks(host_exec_base_va, EFunctionHookProvider::Detours, 1)) {
-        // if hook installation failed, call TerminateProcess instead of conventional exit
-        return false;
-    }
     return true;
 }
 

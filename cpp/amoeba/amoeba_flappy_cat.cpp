@@ -2,10 +2,14 @@
 #include "types/glaiel.hpp"
 #include "types/glaiel_ecs.hpp"
 #include "types/msvc.hpp"
-#include "utilities/debug_console.hpp"
+// #include "utilities/debug_console.hpp"
 // #include "utilities/function_hook.hpp"
 #include "utilities/memory.hpp"
 #include "utilities/portal.hpp"
+#include "ffi/cat_factory.hpp"
+
+// #include <random>
+// #include <numbers>
 
 // A lovingly handcrafted tribute* to the world's first massively
 // popular roguelike mobile gaming sensation, now available** for
@@ -25,11 +29,11 @@ MAKE_DPORTAL(DATAOFF_glaiel__MewDirector__p_singleton,
     MewDirector *, get_p_mewdirector_singleton
 )
 
-MAKE_DPORTAL(0x13ae9d0,
-    int32_t, get_p_next_component_serial
+MAKE_DPORTAL(DATAOFF_glaiel__Component___objid_counter,
+    int32_t, get_next_component_objid
 )
 
-MAKE_FPORTAL(0x9c2370,
+MAKE_FPORTAL(ADDRESS_maybe_Director_create_Scene,
     Scene *, __cdecl, maybe_Director_create_Scene,
     (Director *director, MsvcReleaseModeXString *name),
     (director, name)
@@ -41,59 +45,47 @@ MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateEntity,
     (thiss)
 )
 
-MAKE_FPORTAL(0x95af40,
+MAKE_FPORTAL(ADDRESS_glaiel__Scene__AddComponent,
     void, __cdecl, glaiel__Scene__AddComponent,
     (Scene *thiss, Component *component),
     (thiss, component)
 )
 
-// MAKE_FPORTAL(0x047b60,
-//     void, __cdecl, glaiel__podvector_p_Component__push_back,
-//     (podvector<Component *> *thiss, Component **pp_component),
-//     (thiss, pp_component)
-// )
-
-MAKE_FPORTAL(0x0549b0,
+MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateComponent_RenderCore_int32,
     Component *, __cdecl, glaiel__Scene__CreateComponent_RenderCore_int32,
     (Scene *thiss, Entity *owner, int32_t *maxlayers),
     (thiss, owner, maxlayers)
 )
 
-MAKE_FPORTAL(0x054c90,
-    Component *, __cdecl, glaiel__Scene__CreateComponent_Camera_Component,
+MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateComponent_Camera_Component,
+    Camera *, __cdecl, glaiel__Scene__CreateComponent_Camera_Component,
     (Scene *thiss, Entity *owner, Component *top_component),
     (thiss, owner, top_component)
 )
 
-// MAKE_FPORTAL(0x195680,
-//     Component *, __cdecl, glaiel__Scene__CreateComponent_AABBBroadphase_Component,
-//     (Scene *thiss, Entity *owner, Component *top_component),
-//     (thiss, owner, top_component)
-// )
-
-// MAKE_FPORTAL(0x1958e0,
-//     Component *, __cdecl, glaiel__Scene__CreateComponent_FishingCat,
-//     (Scene *thiss, Entity *owner),
-//     (thiss, owner)
-// )
-
-MAKE_FPORTAL(0x059e40,
-    Component *, __cdecl, glaiel__Scene__CreateComponent_Renderer_CStr,
+MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateComponent_Renderer_CStr,
+    Renderer *, __cdecl, glaiel__Scene__CreateComponent_Renderer_CStr,
     (Scene *thiss, Entity *owner, const char *graphicsname),
     (thiss, owner, graphicsname)
 )
 
-MAKE_FPORTAL(0x08fa70,
+MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateComponent_Animator,
     Component *, __cdecl, glaiel__Scene__CreateComponent_Animator,
     (Scene *thiss, Entity *owner),
     (thiss, owner)
 )
 
-MAKE_FPORTAL(0x1279a0,
+MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateComponent_CatParts,
     Component *, __cdecl, glaiel__Scene__CreateComponent_CatParts,
     (Scene *thiss, Entity *owner),
     (thiss, owner)
 )
+
+// MAKE_FPORTAL(,
+//     Component *, __cdecl, glaiel__Scene__CreateComponent_CatParts_CatData,
+//     (Scene *thiss, Entity *owner, CatData *catdata),
+//     (thiss, owner, catdata)
+// )
 
 class FlappyCatScene : public Component {
 public:
@@ -114,7 +106,9 @@ public:
     }();
 
     // instance members
-    Component *cat_renderer;
+    // ManagedCatData catdata;
+    Renderer *cat_renderer;
+    double cat_v_y;
 
     // virtual function impls
     static MsvcReleaseModeXString *__cdecl GetObjectTypeSTR(const This *thiss, MsvcReleaseModeXString *__return) {
@@ -144,13 +138,13 @@ public:
         return &MY_HIERARCHY;
     }
     static int32_t __cdecl ExecutionOrderPriority(const This *thiss) {
-        D::debug("FlappyCatScene.ExecutionOrderPriority");
+        // D::debug("FlappyCatScene.ExecutionOrderPriority");
         (void)thiss;
         return 0;
     }
 
     static void *__cdecl VDtor(This *thiss, uint32_t flags) {
-        D::debug("FlappyCatScene.TDtor");
+        // D::debug("FlappyCatScene.TDtor");
         if((flags & 1) != 0) { // need free
             if((flags & 4) == 0) { // custom allocator/scalar delete?
                 host_free(thiss); // would be pool alloc free
@@ -175,15 +169,46 @@ public:
 
     static void update(This *thiss) {
         // D::debug("FlappyCatScene.update");
-        // NB RenderCore is at +0x38, Transform is at +0x40
-        void *p_transform = *reinterpret_cast<void **>(reinterpret_cast<uintptr_t>(thiss->cat_renderer) + 0x40);
-        // x
-        *reinterpret_cast<double *>(reinterpret_cast<uintptr_t>(p_transform) + 0x80) = G.cat_x;
-        // y
-        *reinterpret_cast<double *>(reinterpret_cast<uintptr_t>(p_transform) + 0x88) = G.cat_y;
-        // 98 and a0 are scale
-        // rot
-        *reinterpret_cast<double *>(reinterpret_cast<uintptr_t>(p_transform) + 0xA8) = G.cat_rot;
+
+        // TODO Component exposes deltaTime, but presumably the game sets a fixed deltaTime
+        const double DELTA_TIME = 1.0/60.0;
+
+        if(G.nyan_cat_mode) {
+        } else {
+            // fortunately, coordinates do not scale with resolution
+            if(G.cat_jump) {
+                thiss->cat_v_y = G.cat_jump_v_y;
+                G.cat_jump = false;
+            }
+            thiss->cat_renderer->transform->position.x = -4.0;
+            thiss->cat_renderer->transform->position.y += thiss->cat_v_y * DELTA_TIME;
+            thiss->cat_v_y += G.small_g * DELTA_TIME;
+
+            if(thiss->cat_renderer->transform->position.y > 5.5) {
+                thiss->cat_renderer->transform->position.y = 5.5;
+                thiss->cat_v_y = 0.0;
+            } else if(thiss->cat_renderer->transform->position.y < -5.5) {
+                thiss->cat_renderer->transform->position.y = -5.5;
+                thiss->cat_v_y = 0.0;
+                thiss->cat_renderer->transform->rotation = -90.0;
+            }
+
+            if(thiss->cat_v_y > 0.0) {
+                // while the cat has positive velocity, rotate it CCW up to a maximum of 45 deg
+                thiss->cat_renderer->transform->rotation += G.up_rotv;
+            } else {
+                // otherwise rotate it CW up to a minimum of -90 deg
+                thiss->cat_renderer->transform->rotation += G.down_rotv;
+            }
+
+            // enforce limits by hard clamp
+            if(thiss->cat_renderer->transform->rotation > 45.0) {
+                thiss->cat_renderer->transform->rotation = 45.0;
+            } else if(thiss->cat_renderer->transform->rotation < -90.0) {
+                thiss->cat_renderer->transform->rotation = -90.0;
+            }
+        }
+
         return;
     }
 
@@ -202,8 +227,8 @@ public:
     // non-virtual function impls
     FlappyCatScene() {
         this->vtable = reinterpret_cast<const ComponentVTable<Component> *>(&MY_VTABLE);
-        this->_objid = get_p_next_component_serial();
-        get_p_next_component_serial()++;
+        this->_objid = get_next_component_objid();
+        get_next_component_objid()++;
         this->override_tags_B0 = 0x00 | OverrideTags::B0::Update;
         this->override_tags_B1 = 0x00;
         this->entity_enabled = false;
@@ -220,7 +245,7 @@ public:
         // this->entity->scene instead of this->scene is deliberate, it matches *(*(this + 0x18) + 8) from decompilation
         Scene *scene_ = this->entity->scene;
 
-        if(this->entity->scene->doing_scene_destruction) {
+        if(scene_->doing_scene_destruction) {
             return;
         }
 
@@ -229,11 +254,13 @@ public:
         glaiel__Scene__CreateComponent_RenderCore_int32(scene_, glaiel__Scene__CreateEntity(scene_), &maxlayers);
 
         // Camera
+        // Camera *camera =
         glaiel__Scene__CreateComponent_Camera_Component(scene_, glaiel__Scene__CreateEntity(scene_), this);
-        // TODO parameter assignments
-
-        // AABBTreeBroadphase
-        // glaiel__Scene__CreateComponent_AABBBroadphase_Component(scene, glaiel__Scene__CreateEntity(scene), this);
+        // camera->unknown_1 = 1.0;
+        // camera->unknown_0 = 1;
+        // camera->transform->position.x = 640.0;
+        // camera->transform->position.x = 360.0;
+        // camera->transform->unknown_0 = 0;
 
         // Cat
         // Renderer
@@ -242,17 +269,12 @@ public:
         this->cat_renderer = glaiel__Scene__CreateComponent_Renderer_CStr(scene_, glaiel__Scene__CreateEntity(scene_), "CatTest");
         // Animator
         // The Animator possibly controls pose selection for the rendered object. Without it, the rendered cat appears to glitch between all possible poses.
-        glaiel__Scene__CreateComponent_Animator(this->entity->scene, this->cat_renderer->entity);
+        glaiel__Scene__CreateComponent_Animator(scene_, this->cat_renderer->entity);
         // CatParts
-        glaiel__Scene__CreateComponent_CatParts(this->entity->scene, this->cat_renderer->entity);
+        glaiel__Scene__CreateComponent_CatParts(scene_, this->cat_renderer->entity);
+        // this->catdata = make_stray();
+        // glaiel__Scene__CreateComponent_CatParts_CatData(scene_, this->cat_renderer->entity, this->catdata.get());
 
-        // Component *lsp_renderer = glaiel__Scene__CreateComponent_Renderer_CStr(scene, glaiel__Scene__CreateEntity(scene), "LabSupportPillar");
-        // glaiel__Scene__CreateComponent_Animator(this->entity->scene, lsp_renderer->entity);
-        // glaiel__Scene__CreateComponent_CatParts(this->entity->scene, lsp_renderer->entity);
-
-        // if(!this->entity->scene->doing_scene_destruction) {
-        //     glaiel__Scene__CreateComponent_FishingCat(this->entity->scene, glaiel__Scene__CreateEntity(this->entity->scene));
-        // }
     }
 };
 
