@@ -48,19 +48,19 @@ This repository gratefully uses the following libraries.
 
 #### Integrated
 * GON
-  * Used to interpret GON objects taken from game memory (types/gon.hpp).
+  * Used to interpret GON objects taken from game memory (`types/gon.hpp`).
   * `Copyright (c) 2018 Tyler Glaiel`
   * MIT License
   * https://github.com/TylerGlaiel/GON/blob/master/LICENSE
 
 #### Referenced
 * STL
-  * Referenced to write types/msvc.hpp
+  * Referenced to write `types/msvc.hpp`.
   * `Copyright (c) Microsoft Corporation.`
   * Apache License v2.0 with LLVM Exception
   * https://github.com/microsoft/STL/blob/main/LICENSE.txt
 * parallel-hashmap
-  * Referenced to write types/phmap.hpp
+  * Referenced to write `types/phmap.hpp`.
   * `Copyright (c) 2019, Gregory Popovitch - greg7mdp@gmail.com`
   * Apache License 2.0
   * https://github.com/greg7mdp/parallel-hashmap/blob/master/LICENSE
@@ -77,3 +77,8 @@ This repository gratefully uses the following libraries.
   * `Copyright (c) 2004-2025, NetworkX Developers Aric Hagberg <hagberg@lanl.gov> Dan Schult <dschult@colgate.edu> Pieter Swart <swart@lanl.gov> All rights reserved.`
   * BSD 3-Clause License
   * https://github.com/networkx/networkx/blob/main/LICENSE.txt
+* pefile
+  * Used by `find_rvas.py` to parse Mewgenics.exe's PE structures for signature scanning.
+  * `Copyright (c) 2004-2024 Ero Carrera`
+  * MIT License
+  * https://github.com/erocarrera/pefile/blob/master/LICENSE

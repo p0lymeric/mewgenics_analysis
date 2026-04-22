@@ -1,14 +1,17 @@
 from collections import namedtuple
+import re
+import hashlib
+import pefile
+
+MEWGENICS_EXE_PATH = r'C:\Games\Steam\steamapps\common\Mewgenics\Mewgenics.exe'
 
 '''
-Run this script in Binary Ninja (File > Run Script...)
-against an analyzed database to find symbol addresses
-after a game update.
+Run this script to find symbol addresses after a game update.
 
 polymeric 2026
 '''
 
-# Patterns were made using the Sigga script for Ghidra and hand-adjusted as needed,
+# Signature patterns were made using the Sigga script for Ghidra and hand-adjusted as needed,
 # with an acceptable size range of [32, 128] B and preferring to anchor at function start.
 
 DirectSig = namedtuple('DirectSig', ['pattern', 'offset'])
@@ -43,7 +46,7 @@ signatures = {
     'ADDRESS_glaiel__Scene__CreateComponent_Animator': DirectSig('48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 48 83 EC 40 48 8B EA 48 8B D9 80 B9 B0 04 00 00 00 74 ?? 33 C0 E9 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B F8 48 89 44 24 50 48 85 C0 74 ?? 33 D2 41 B8 B8 02 00 00', 0),
     'ADDRESS_glaiel__Scene__CreateComponent_CatParts': DirectSig('48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 48 83 EC 40 48 8B EA 48 8B D9 80 B9 B0 04 00 00 00 74 ?? 33 C0 E9 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B F8 48 89 44 24 50 48 85 C0 74 ?? 33 D2 41 B8 90 0A 00 00', 0),
 
-    # Data/TLS references are located by anchoring on references within functions
+    # Data/TLS references are located through references within functions
     'DATAOFF_glaiel__MewDirector__p_singleton': IndirectSig(
         '48 89 5C 24 10 48 89 4C 24 08 57 48 83 EC 40 48 8B CA 48 8B 05 ?? ?? ?? ?? 48 8B B8 A8 05 00 00',
         21, 4, True, True
@@ -62,18 +65,37 @@ signatures = {
     ),
 }
 
+def hex_pattern_to_bytes_regex(pattern):
+    pattern_norm = ''.join(pattern.split())
+    bytes_str = b''
+    for i in range(0, len(pattern_norm), 2):
+        pattern_byte = pattern_norm[i:i+2]
+        if pattern_byte == '??':
+            bytes_str += b'.'
+        else:
+            bytes_str += re.escape(bytes([int(pattern_byte, 16)]))
+    return re.compile(bytes_str, re.DOTALL)
+
 def main():
+    pe = pefile.PE(MEWGENICS_EXE_PATH, fast_load=True)
+
+    with open(MEWGENICS_EXE_PATH, 'rb') as f:
+        hash = hashlib.sha256(f.read()).hexdigest()
+    print(f'inline constexpr Hash256Bit EXE_SHA256 = c_str_to_hash256bit("{hash}");')
+
     for search_varname, search_descriptor in signatures.items():
-        results = list(bv.search(search_descriptor.pattern))
+        regexp = hex_pattern_to_bytes_regex(search_descriptor.pattern)
+        results = list(re.finditer(regexp, pe.get_memory_mapped_image()))
         if len(results) == 1:
-            result_cva, result_buffer = results[0]
+            result_cva = results[0].start()
+            result_buffer = results[0].group(0)
             if type(search_descriptor) is DirectSig:
-                target_rva = result_cva + search_descriptor.offset - bv.start
+                target_rva = result_cva + search_descriptor.offset
                 print(f'inline constexpr uintptr_t {search_varname} = {hex(target_rva)}; // {search_descriptor}')
             else:
                 target = int.from_bytes(result_buffer[search_descriptor.offset:search_descriptor.offset+search_descriptor.length], byteorder='little', signed=search_descriptor.signed)
                 if search_descriptor.rip_relative:
-                    target += result_cva + search_descriptor.offset + search_descriptor.length - bv.start
+                    target += result_cva + search_descriptor.offset + search_descriptor.length
                 print(f'inline constexpr uintptr_t {search_varname} = {hex(target)}; // {search_descriptor}')
         elif len(results) > 1:
             print(f'inline constexpr uintptr_t {search_varname} = <MULTIPLE MATCHES>; // {search_descriptor}')
