@@ -1779,6 +1779,12 @@ void show_save_explorer_window() {
                 ImGui::InputScalar("small_g", ImGuiDataType_Double, &G.small_g);
                 ImGui::InputScalar("up_rotv", ImGuiDataType_Double, &G.up_rotv);
                 ImGui::InputScalar("down_rotv", ImGuiDataType_Double, &G.down_rotv);
+                ImGui::InputScalar("bob_freq", ImGuiDataType_Double, &G.bob_freq);
+                ImGui::InputScalar("bob_amplitude", ImGuiDataType_Double, &G.bob_amplitude);
+                ImGui::InputScalar("pipe_scroll_speed", ImGuiDataType_Double, &G.pipe_scroll_speed);
+                ImGui::InputScalar("pipe_spawn_interval", ImGuiDataType_Double, &G.pipe_spawn_interval);
+                ImGui::InputScalar("pipe_shift_dist_amp_half", ImGuiDataType_Double, &G.pipe_shift_dist_amp_half);
+                ImGui::InputScalar("pipe_gap_height_half", ImGuiDataType_Double, &G.pipe_gap_height_half);
                 ImGui::Checkbox("nyan_cat_mode", &G.nyan_cat_mode);
                 if(ImGui::Button("Jump")) {
                     G.cat_jump = true;

@@ -8,8 +8,8 @@
 #include "utilities/portal.hpp"
 #include "ffi/cat_factory.hpp"
 
-// #include <random>
-// #include <numbers>
+#include <random>
+#include <numbers>
 
 // A lovingly handcrafted tribute* to the world's first massively
 // popular roguelike mobile gaming sensation, now available** for
@@ -109,6 +109,10 @@ public:
     // ManagedCatData catdata;
     Renderer *cat_renderer;
     double cat_v_y;
+    std::array<std::pair<Renderer *, Renderer *>, 5> pipes;
+    std::mt19937 prng;
+    double pipe_spawn_timer;
+    double bob_timer;
 
     // virtual function impls
     static MsvcReleaseModeXString *__cdecl GetObjectTypeSTR(const This *thiss, MsvcReleaseModeXString *__return) {
@@ -174,6 +178,11 @@ public:
         const double DELTA_TIME = 1.0/60.0;
 
         if(G.nyan_cat_mode) {
+            thiss->bob_timer = std::fmod(thiss->bob_timer + DELTA_TIME, 1.0 / G.bob_freq);
+            thiss->cat_renderer->transform->position.x = -4.0;
+            double omega = 2.0 * std::numbers::pi * G.bob_freq;
+            thiss->cat_renderer->transform->position.y = G.bob_amplitude * std::sin(omega * thiss->bob_timer);
+            thiss->cat_renderer->transform->rotation = 0.0;
         } else {
             // fortunately, coordinates do not scale with resolution
             if(G.cat_jump) {
@@ -206,6 +215,38 @@ public:
                 thiss->cat_renderer->transform->rotation = 45.0;
             } else if(thiss->cat_renderer->transform->rotation < -90.0) {
                 thiss->cat_renderer->transform->rotation = -90.0;
+            }
+        }
+
+        thiss->pipe_spawn_timer += DELTA_TIME;
+        if(thiss->pipe_spawn_timer >= G.pipe_spawn_interval) {
+            thiss->pipe_spawn_timer = 0.0;
+            for(auto pair : thiss->pipes) {
+                if(!pair.first->enabled) {
+                    pair.first->enabled = true;
+                    pair.second->enabled = true;
+                    std::uniform_real_distribution<double> dist(-G.pipe_shift_dist_amp_half, G.pipe_shift_dist_amp_half);
+                    double shift_y = dist(thiss->prng);
+                    pair.first->transform->position.y = shift_y + G.pipe_gap_height_half;
+                    pair.second->transform->position.y = shift_y - G.pipe_gap_height_half;
+                    break;
+                }
+            }
+        }
+
+        for(auto pair : thiss->pipes) {
+            if(!pair.first->enabled) {
+                continue;
+            }
+
+            pair.first->transform->position.x -= G.pipe_scroll_speed * DELTA_TIME;
+            pair.second->transform->position.x = pair.first->transform->position.x;
+
+            if(pair.first->transform->position.x < -12.0) {
+                pair.first->enabled = false;
+                pair.second->enabled = false;
+                pair.first->transform->position.x = 30.0;
+                pair.second->transform->position.x = 30.0;
             }
         }
 
@@ -275,6 +316,24 @@ public:
         // this->catdata = make_stray();
         // glaiel__Scene__CreateComponent_CatParts_CatData(scene_, this->cat_renderer->entity, this->catdata.get());
 
+        std::random_device rd;
+        this->prng = std::mt19937(rd());
+        this->pipe_spawn_timer = 0.0;
+        this->bob_timer = 0.0;
+
+        for(int i = 0; i < (int)this->pipes.size(); i++) {
+            auto& pair = this->pipes[i];
+            pair.first = glaiel__Scene__CreateComponent_Renderer_CStr(scene_, glaiel__Scene__CreateEntity(scene_), "LabSupportPillar");
+            glaiel__Scene__CreateComponent_Animator(this->entity->scene, pair.first->entity);
+            pair.second = glaiel__Scene__CreateComponent_Renderer_CStr(scene_, glaiel__Scene__CreateEntity(scene_), "LabSupportPillar");
+            glaiel__Scene__CreateComponent_Animator(this->entity->scene, pair.second->entity);
+
+            pair.first->enabled = false;
+            pair.second->enabled = false;
+            pair.second->transform->scale.y = -1.0;
+            pair.first->transform->position.x = 30.0;
+            pair.second->transform->position.x = 30.0;
+        }
     }
 };
 
