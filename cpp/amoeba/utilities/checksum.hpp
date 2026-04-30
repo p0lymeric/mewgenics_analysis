@@ -1,9 +1,12 @@
 #pragma once
 
+#include "utilities/constexpr.hpp"
+
 #include <fstream>
 #include <array>
 #include <optional>
 #include <filesystem>
+#include <stdexcept>
 
 #include "tomcrypt.h"
 
@@ -36,42 +39,16 @@ inline std::optional<Hash256Bit> sha256_file(const std::filesystem::path &path) 
     return digest;
 }
 
-inline constexpr uint8_t parse_char_0_to_F_as_hex(char c) {
-    if(c >= '0' && c <= '9') {
-        return c - '0';
-    }
-    // To correctly handle the post-UTF-8 world, when aliens successfully invade the Earth and mandate universal
-    // adoptation of a new C-compatible character set that does not organize a-f/A-F in a consecutive gapless
-    // sequence.
-    // Microsoft is among the first to fall in line, breaking 3 decades of haphazardly careful Windows architecture
-    // to meet the asks from our new benefactors.
-    // The rest of the world shortly follows, updating all software to use the new character set.
-    // It's amazing how quickly change can occur with the fear of pain and vaporization!
-    // We relax with a spot of wine as our peers toil, because we wrote this code portably, enabling Day 1 compatibility
-    // with this new reality.
-    // TODO should add FIXMEs to code that assumes LE ordering
-    switch(c) {
-        case 'a': return 10;
-        case 'b': return 11;
-        case 'c': return 12;
-        case 'd': return 13;
-        case 'e': return 14;
-        case 'f': return 15;
-        case 'A': return 10;
-        case 'B': return 11;
-        case 'C': return 12;
-        case 'D': return 13;
-        case 'E': return 14;
-        case 'F': return 15;
-        default: return 0;
-    }
-}
-
-inline constexpr Hash256Bit c_str_to_hash256bit(const char *str) {
+inline constexpr Hash256Bit c_str_to_hash256bit(const char (&str)[65]) {
     Hash256Bit digest;
     for (int i = 0; i < 32; i++) {
         int stroff = i * 2;
-        digest[i] = (parse_char_0_to_F_as_hex(str[stroff]) << 4) | parse_char_0_to_F_as_hex(str[stroff + 1]);
+        uint8_t high_nibble = parse_char_0_to_F_as_hex(str[stroff]);
+        uint8_t low_nibble = parse_char_0_to_F_as_hex(str[stroff + 1]);
+        if(high_nibble >= 16 || low_nibble >= 16) {
+            throw std::logic_error("Given hex sequence has unexpected characters");
+        }
+        digest[i] = (high_nibble << 4) | low_nibble;
     }
     return digest;
 }

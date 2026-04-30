@@ -55,12 +55,40 @@ struct ImguiPrivateState {
 
 static ImguiPrivateState P;
 
-MAKE_DPORTAL(DATAOFF_glaiel__MewDirector__p_singleton,
+MAKE_SDPORTAL(DATAOFF_glaiel__MewDirector__p_singleton,
     MewDirector *, get_p_mewdirector_singleton
 )
 
-MAKE_DPORTAL(DATAOFF_maybe_housecat_component_pool,
+MAKE_SDPORTAL(DATAOFF_maybe_housecat_component_pool,
     VirtualGenerationalArenaAllocator<HouseCat>, get_housecat_component_pool
+)
+
+MAKE_STPORTAL(0, TLS0OFF_xoshiro256p_rng_context,
+    Xoshiro256pContext, get_xoshiro256p_rng_context
+)
+
+MAKE_SFPORTAL(ADDRESS_maybe_Director_create_Scene,
+    Scene *, __cdecl, maybe_Director_create_Scene,
+    (Director *director, MsvcReleaseModeXString *name),
+    (director, name)
+)
+
+MAKE_SFPORTAL(ADDRESS_glaiel__Scene__CreateComponent_FishingMinigameScene,
+    Component *, __cdecl, glaiel__Scene__CreateComponent_FishingMinigameScene,
+    (Scene *thiss, Entity *entity),
+    (thiss, entity)
+)
+
+MAKE_SFPORTAL(ADDRESS_glaiel__Scene__CreateEntity,
+    Entity *, __cdecl, glaiel__Scene__CreateEntity,
+    (Scene *thiss),
+    (thiss)
+)
+
+MAKE_SFPORTAL(ADDRESS_glaiel__Director__DestroyScene,
+    Entity *, __cdecl, glaiel__Director__DestroyScene,
+    (Director *thiss, MsvcReleaseModeXString *scene_name),
+    (thiss, scene_name)
 )
 
 void show_about_modal(bool signal) {
@@ -757,9 +785,9 @@ void show_data_explorer_window() {
         if(ImGui::TreeNode("Thread-local storage")) {
             auto *p_tls = get_tls0_base<char>();
             ImguiTextStdFmt("TLS Slot 0 base VA: {:p}", reinterpret_cast<void *>(p_tls));
-            Xoshiro256pContext *p_rng = reinterpret_cast<Xoshiro256pContext *>(p_tls + TLS0OFF_xoshiro256p_rng_context);
+            Xoshiro256pContext &rng = get_xoshiro256p_rng_context();
             for(int i = 0; i < 4; i++) {
-                ImguiTextStdFmt("RNG context {}: 0x{:x}", i, p_rng->ctx[i]);
+                ImguiTextStdFmt("RNG context {}: 0x{:x}", i, rng.ctx[i]);
             }
             ImGui::TreePop();
         }
@@ -1608,30 +1636,6 @@ void show_feline_therapist_window() {
     ImGui::End();
 }
 
-MAKE_FPORTAL(ADDRESS_maybe_Director_create_Scene,
-    Scene *, __cdecl, maybe_Director_create_Scene,
-    (Director *director, MsvcReleaseModeXString *name),
-    (director, name)
-)
-
-MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateComponent_FishingMinigameScene,
-    Component *, __cdecl, glaiel__Scene__CreateComponent_FishingMinigameScene,
-    (Scene *thiss, Entity *entity),
-    (thiss, entity)
-)
-
-MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateEntity,
-    Entity *, __cdecl, glaiel__Scene__CreateEntity,
-    (Scene *thiss),
-    (thiss)
-)
-
-MAKE_FPORTAL(ADDRESS_glaiel__Director__DestroyScene,
-    Entity *, __cdecl, glaiel__Director__DestroyScene,
-    (Director *thiss, MsvcReleaseModeXString *scene_name),
-    (thiss, scene_name)
-)
-
 void show_save_explorer_window() {
     if(!P.show_save_explorer) {
         return;
@@ -1660,9 +1664,8 @@ void show_save_explorer_window() {
             static Xoshiro256pContext our_prng_state = {1, 0, 0, 0};
             if(ImGui::TreeNode("Analysis RNG state")) {
                 if(ImGui::Button("Copy current game RNG state")) {
-                    auto *p_tls = get_tls0_base<char>();
-                    Xoshiro256pContext *p_rng = reinterpret_cast<Xoshiro256pContext *>(p_tls + TLS0OFF_xoshiro256p_rng_context);
-                    our_prng_state = *p_rng;
+                    Xoshiro256pContext &rng = get_xoshiro256p_rng_context();
+                    our_prng_state = rng;
                 }
                 ImGui::InputScalar("RNG context 0", ImGuiDataType_U64, &our_prng_state.ctx[0], nullptr, nullptr, "%016llx");
                 ImGui::InputScalar("RNG context 1", ImGuiDataType_U64, &our_prng_state.ctx[1], nullptr, nullptr, "%016llx");
@@ -1841,7 +1844,7 @@ void deinitialize_imgui() {
     }
 }
 
-MAKE_PHOOK(0, "SDL_GL_SwapWindow",
+MAKE_PHOOK(1, "SDL_GL_SwapWindow",
     bool, __cdecl, SDL_GL_SwapWindow,
     SDL_Window *window
 ) {
@@ -1909,7 +1912,7 @@ MAKE_PHOOK(0, "SDL_GL_SwapWindow",
     return result;
 }
 
-MAKE_PHOOK(0, "SDL_PollEvent",
+MAKE_PHOOK(1, "SDL_PollEvent",
     bool, __cdecl, SDL_PollEvent,
     SDL_Event *event
 ) {

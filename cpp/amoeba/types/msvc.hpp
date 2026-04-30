@@ -313,7 +313,7 @@ struct MsvcFuncNoAlloc<_Callable, _Rx(_Types...)> {
     // Users of this struct may describe capture layout in _Callable or use an opaque arbitrary sized dummy type.
     // However, we do require _Mystorage to be exactly 7 qwords in length.
     // Since we don't model heap indirection (_Is_large==true), we place this assertion on sizeof(_Callable).
-    static_assert(sizeof(_Callable) <= 6*64, "_Callable can't fit into the inline buffer. _Is_large==true is not supported.");
+    static_assert(sizeof(_Callable) <= 7*8, "_Callable can't fit into the inline buffer. _Is_large==true is not supported.");
 
     MsvcFuncNoAlloc(VTable *vtable, _Callable callee) :
         vtable(vtable), _Mystorage(callee)

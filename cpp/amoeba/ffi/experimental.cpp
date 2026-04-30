@@ -8,23 +8,23 @@
 //
 // polymeric 2026
 
-MAKE_DPORTAL(DATAOFF_glaiel__MewDirector__p_singleton,
+MAKE_SDPORTAL(DATAOFF_glaiel__MewDirector__p_singleton,
     MewDirector *, get_p_mewdirector_singleton
 )
 
-MAKE_FPORTAL(ADDRESS_maybe_create_stray_catdata_and_register_in_pedigree,
+MAKE_SFPORTAL(ADDRESS_maybe_create_stray_catdata_and_register_in_pedigree,
     CatData *, __cdecl, maybe_create_stray_catdata_and_register_in_pedigree,
     (CatDatabase *thiss, void *unused_1, int32_t sex),
     (thiss, unused_1, sex)
 )
 
-MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateEntity,
+MAKE_SFPORTAL(ADDRESS_glaiel__Scene__CreateEntity,
     Entity *, __cdecl, glaiel__Scene__CreateEntity,
     (Scene *thiss),
     (thiss)
 )
 
-MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateComponent_HouseCat_int64,
+MAKE_SFPORTAL(ADDRESS_glaiel__Scene__CreateComponent_HouseCat_int64,
     HouseCat *, __cdecl, glaiel__Scene__CreateComponent_HouseCat_int64,
     (Scene *thiss, Entity *owner, int64_t *p_sql_key),
     (thiss, owner, p_sql_key)
@@ -111,7 +111,7 @@ void spawn_stray_at_house(std::function<void(CatData *cat)> customize_your_cat) 
     D::debug("*(p_house + 0x90): {:x}, *(p_house + 0x98): {:x}", house_plus_0x90, house_plus_0x98);
 }
 
-MAKE_FPORTAL(ADDRESS_glaiel__HouseCat__unk_remove_from_world,
+MAKE_SFPORTAL(ADDRESS_glaiel__HouseCat__unk_remove_from_world,
     HouseCat *, __cdecl, glaiel__HouseCat__unk_remove_from_world,
     (HouseCat *hc),
     (hc)

@@ -10,22 +10,45 @@
 // polymeric 2026
 
 #define MAKE_FPORTAL(address, ret_type, call_conv, name, prototype_args, call_args) \
-    static PortalDescriptor<ret_type (call_conv *) prototype_args, true> name##_pd(address); \
+    static RvaPortalDescriptor<ret_type (call_conv *) prototype_args, true> name##_pd(address); \
     static ret_type call_conv name prototype_args { \
         return name##_pd.target call_args; \
     }
 
 #define MAKE_DPORTAL(address, type, name) \
-    static PortalDescriptor<type *, true> name##_pd(address); \
+    static RvaPortalDescriptor<type *, true> name##_pd(address); \
     static type &name() { \
         return *name##_pd.target; \
     }
 
-// #define MAKE_TPORTAL(slot, offset, type, name)
+#define MAKE_TPORTAL(slot, offset, type, name)\
+    static type &name() { \
+        uint8_t *p_target = reinterpret_cast<uint8_t **>(__readgsqword(0x58))[slot] + offset; \
+        return *reinterpret_cast<type *>(p_target); \
+    }
+
+#define MAKE_SFPORTAL(sig, ret_type, call_conv, name, prototype_args, call_args) \
+    static SigPortalDescriptor<ret_type (call_conv *) prototype_args, true, decltype(sig)> name##_pd(sig); \
+    static ret_type call_conv name prototype_args { \
+        return name##_pd.target call_args; \
+    }
+
+#define MAKE_SDPORTAL(sig, type, name) \
+    static SigPortalDescriptor<type *, true, decltype(sig)> name##_pd(sig); \
+    static type &name() { \
+        return *name##_pd.target; \
+    }
+
+#define MAKE_STPORTAL(slot, sig, type, name) \
+    static SigPortalDescriptor<type *, true, decltype(sig)> name##_pd(sig); \
+    static type &name() { \
+        uint8_t *p_target = reinterpret_cast<uint8_t **>(__readgsqword(0x58))[slot] + reinterpret_cast<size_t>(name##_pd.target); \
+        return *reinterpret_cast<type *>(p_target); \
+    }
 
 class IPortalDescriptor {
 public:
-    virtual void resolve(uintptr_t offset) = 0;
+    virtual void resolve(uintptr_t offset, size_t size) = 0;
 };
 
 class SPortalRegistry {
@@ -37,15 +60,15 @@ public:
         return registry;
     }
 
-    static void resolve_portals(uintptr_t host_exec_base_va) {
+    static void resolve_portals(uintptr_t host_exec_base_va, size_t host_exec_image_size) {
         for(auto portal : SPortalRegistry::get_registry()) {
-            portal->resolve(host_exec_base_va);
+            portal->resolve(host_exec_base_va, host_exec_image_size);
         }
     }
 };
 
 template<typename T, bool RegisterMe>
-class PortalDescriptor : IPortalDescriptor {
+class RvaPortalDescriptor : IPortalDescriptor {
 public:
     // VA of the targeted symbol. This is the symbol's relocated address seen in this program instance.
     T target;
@@ -53,7 +76,7 @@ public:
     // Relative VA of the targeted symbol. This is the symbol's VA not including any mapping offsets.
     const uintptr_t target_canonical;
 
-    PortalDescriptor(uintptr_t target_canonical) :
+    RvaPortalDescriptor(uintptr_t target_canonical) :
         target(nullptr), target_canonical(target_canonical)
     {
         if constexpr(RegisterMe) {
@@ -61,7 +84,30 @@ public:
         }
     }
 
-    void resolve(uintptr_t offset) override {
+    void resolve(uintptr_t offset, size_t size) override {
+        (void)size;
         this->target = reinterpret_cast<T>(this->target_canonical + offset);
+    }
+};
+
+template<typename T, bool RegisterMe, typename SigClass>
+class SigPortalDescriptor : IPortalDescriptor {
+public:
+    // VA of the targeted symbol. This is the symbol's relocated address seen in this program instance.
+    T target;
+
+    // Signature descriptor of the targeted symbol.
+    SigClass sig;
+
+    SigPortalDescriptor(SigClass sig) :
+        target(nullptr), sig(sig)
+    {
+        if constexpr(RegisterMe) {
+            SPortalRegistry::get_registry().push_back(this);
+        }
+    }
+
+    void resolve(uintptr_t offset, size_t size) override {
+        target = reinterpret_cast<T>(sig.find_unique_match_or_none(reinterpret_cast<uint8_t *>(offset), size));
     }
 };

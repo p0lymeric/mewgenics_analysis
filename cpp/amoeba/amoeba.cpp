@@ -1,8 +1,10 @@
 #include "amoeba.hpp"
 #include "utilities/debug_console.hpp"
 #include "utilities/function_hook.hpp"
+#include "utilities/memory.hpp"
 #include "utilities/strings.hpp"
 #include "utilities/portal.hpp"
+#include "utilities/stopwatch.hpp"
 
 #include <filesystem>
 
@@ -35,15 +37,10 @@ void asan_error_report_callback(const char *report) {
 
 bool on_attach() {
     // Actual virtual address where mapped executable begins
-    uintptr_t host_exec_base_va = reinterpret_cast<uintptr_t>(GetModuleHandle(NULL));
+    HMODULE host_exec_module = GetModuleHandle(NULL);
+    uintptr_t host_exec_base_va = reinterpret_cast<uintptr_t>(host_exec_module);
+    size_t host_exec_image_size = get_pe_image_mapped_size(host_exec_module);
     G.host_exec_base_va = host_exec_base_va;
-
-    // Calculate the SHA-256 digest of the executable
-    std::filesystem::path exe_path = get_module_file_path(NULL);
-    G.exe_actual_sha256 = sha256_file(exe_path);
-    if(G.exe_actual_sha256.has_value()) {
-        G.exe_hash_mismatch_detected = (G.exe_actual_sha256.value() != EXE_SHA256);
-    }
 
     // Create a Win32 console window with which to print log messages
     ALLOC_CONSOLE();
@@ -52,9 +49,20 @@ bool on_attach() {
     // Enable the debug console internal message buffer
     D::enable_internal_buffer(10000, 1000);
 
+    // Calculate the SHA-256 digest of the executable
+    {
+        MAKE_STOPWATCH_SCOPE(sct, "sha256 calculation");
+        std::filesystem::path exe_path = get_module_file_path(NULL);
+        G.exe_actual_sha256 = sha256_file(exe_path);
+        if(G.exe_actual_sha256.has_value()) {
+            G.exe_hash_mismatch_detected = (G.exe_actual_sha256.value() != EXE_SHA256);
+        }
+    }
+
     D::info("DllMain DLL_PROCESS_ATTACH\n");
     D::info("Hook base VA: 0x{:x}\n", G.dll_base_va);
     D::info("Executable base VA: 0x{:x}\n", host_exec_base_va);
+    D::info("Executable mapped size: {}\n", host_exec_image_size);
     D::info("Executable SHA-256: {}\n", G.exe_actual_sha256.has_value() ? hash256bit_to_string(G.exe_actual_sha256.value()) : "<unknown>");
     // D::info("Mewgenics.exe path {}", get_module_file_path(NULL).string());
     // D::info("amoeba.dll path {}", get_module_file_path(reinterpret_cast<HMODULE>(G.dll_base_va)).string());
@@ -66,23 +74,33 @@ bool on_attach() {
     #endif
 
     // Resolve portals (trampolines to functions and data)
-    SPortalRegistry::resolve_portals(host_exec_base_va);
-
-    // Try to install function hooks
-    if(SFunctionHookRegistry::api_is_present(EFunctionHookProvider::Mewjector)) {
-        // Use Mewjector if present for coordinated hooking
-        if(!SFunctionHookRegistry::install_hooks(host_exec_base_va, EFunctionHookProvider::Mewjector, 0)) {
-            // if hook installation failed, call TerminateProcess instead of conventional exit
-            return false;
-        }
-        G.dll_can_self_eject = false;
-    } else {
-        if(!SFunctionHookRegistry::install_hooks(host_exec_base_va, EFunctionHookProvider::Detours, 0)) {
-            // if hook installation failed, call TerminateProcess instead of conventional exit
-            return false;
-        }
-        G.dll_can_self_eject = true;
+    {
+        MAKE_STOPWATCH_SCOPE(sct, "portal installation");
+        SPortalRegistry::resolve_portals(host_exec_base_va, host_exec_image_size);
     }
+    // Try to install function hooks
+    {
+        MAKE_STOPWATCH_SCOPE(sct, "function hook installation");
+        if(SFunctionHookRegistry::api_is_present(EFunctionHookProvider::Mewjector)) {
+            // Use Mewjector if present for coordinated hooking
+            if(!SFunctionHookRegistry::install_hooks(host_exec_base_va, host_exec_image_size, EFunctionHookProvider::Mewjector, 0)) {
+                // if hook installation failed, call TerminateProcess instead of conventional exit
+                return false;
+            }
+            G.dll_can_self_eject = false;
+        } else {
+            if(!SFunctionHookRegistry::install_hooks(host_exec_base_va, host_exec_image_size, EFunctionHookProvider::Detours, 0)) {
+                // if hook installation failed, call TerminateProcess instead of conventional exit
+                return false;
+            }
+            G.dll_can_self_eject = true;
+        }
+        if(!SFunctionHookRegistry::install_hooks(host_exec_base_va, host_exec_image_size, EFunctionHookProvider::Detours, 1)) {
+            // if hook installation failed, call TerminateProcess instead of conventional exit
+            return false;
+        }
+    }
+
     return true;
 }
 

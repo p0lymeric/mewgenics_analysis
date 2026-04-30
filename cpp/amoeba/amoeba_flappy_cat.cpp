@@ -25,63 +25,63 @@
 
 // static PrivateState P;
 
-MAKE_DPORTAL(DATAOFF_glaiel__MewDirector__p_singleton,
+MAKE_SDPORTAL(DATAOFF_glaiel__MewDirector__p_singleton,
     MewDirector *, get_p_mewdirector_singleton
 )
 
-MAKE_DPORTAL(DATAOFF_glaiel__Component___objid_counter,
+MAKE_SDPORTAL(DATAOFF_glaiel__Component___objid_counter,
     int32_t, get_next_component_objid
 )
 
-MAKE_FPORTAL(ADDRESS_maybe_Director_create_Scene,
+MAKE_SFPORTAL(ADDRESS_maybe_Director_create_Scene,
     Scene *, __cdecl, maybe_Director_create_Scene,
     (Director *director, MsvcReleaseModeXString *name),
     (director, name)
 )
 
-MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateEntity,
+MAKE_SFPORTAL(ADDRESS_glaiel__Scene__CreateEntity,
     Entity *, __cdecl, glaiel__Scene__CreateEntity,
     (Scene *thiss),
     (thiss)
 )
 
-MAKE_FPORTAL(ADDRESS_glaiel__Scene__AddComponent,
+MAKE_SFPORTAL(ADDRESS_glaiel__Scene__AddComponent,
     void, __cdecl, glaiel__Scene__AddComponent,
     (Scene *thiss, Component *component),
     (thiss, component)
 )
 
-MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateComponent_RenderCore_int32,
+MAKE_SFPORTAL(ADDRESS_glaiel__Scene__CreateComponent_RenderCore_int32,
     Component *, __cdecl, glaiel__Scene__CreateComponent_RenderCore_int32,
     (Scene *thiss, Entity *owner, int32_t *maxlayers),
     (thiss, owner, maxlayers)
 )
 
-MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateComponent_Camera_Component,
+MAKE_SFPORTAL(ADDRESS_glaiel__Scene__CreateComponent_Camera_Component,
     Camera *, __cdecl, glaiel__Scene__CreateComponent_Camera_Component,
     (Scene *thiss, Entity *owner, Component *top_component),
     (thiss, owner, top_component)
 )
 
-MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateComponent_Renderer_CStr,
+MAKE_SFPORTAL(ADDRESS_glaiel__Scene__CreateComponent_Renderer_CStr,
     Renderer *, __cdecl, glaiel__Scene__CreateComponent_Renderer_CStr,
     (Scene *thiss, Entity *owner, const char *graphicsname),
     (thiss, owner, graphicsname)
 )
 
-MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateComponent_Animator,
+MAKE_SFPORTAL(ADDRESS_glaiel__Scene__CreateComponent_Animator,
     Component *, __cdecl, glaiel__Scene__CreateComponent_Animator,
     (Scene *thiss, Entity *owner),
     (thiss, owner)
 )
 
-MAKE_FPORTAL(ADDRESS_glaiel__Scene__CreateComponent_CatParts,
+MAKE_SFPORTAL(ADDRESS_glaiel__Scene__CreateComponent_CatParts,
     Component *, __cdecl, glaiel__Scene__CreateComponent_CatParts,
     (Scene *thiss, Entity *owner),
     (thiss, owner)
 )
 
-// MAKE_FPORTAL(,
+// MAKE_SFPORTAL(,
 //     Component *, __cdecl, glaiel__Scene__CreateComponent_CatParts_CatData,
 //     (Scene *thiss, Entity *owner, CatData *catdata),
 //     (thiss, owner, catdata)

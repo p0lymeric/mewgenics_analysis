@@ -97,7 +97,7 @@ void write_sql_to_log(std::string query, PodBufferPreallocated<SqlParam, 4> *par
     }
 }
 
-MAKE_HOOK(0, ADDRESS_glaiel__SQLSaveFile__BeginSave,
+MAKE_SHOOK(0, ADDRESS_glaiel__SQLSaveFile__BeginSave,
     void, __cdecl, glaiel__SQLSaveFile__BeginSave,
     SQLSaveFile* thiss
 ) {
@@ -111,7 +111,7 @@ MAKE_HOOK(0, ADDRESS_glaiel__SQLSaveFile__BeginSave,
     glaiel__SQLSaveFile__BeginSave_hook.orig(thiss);
 }
 
-MAKE_HOOK(0, ADDRESS_glaiel__SQLSaveFile__EndSave,
+MAKE_SHOOK(0, ADDRESS_glaiel__SQLSaveFile__EndSave,
     void, __cdecl, glaiel__SQLSaveFile__EndSave,
     SQLSaveFile* thiss
 ) {
@@ -128,7 +128,7 @@ MAKE_HOOK(0, ADDRESS_glaiel__SQLSaveFile__EndSave,
     }
 }
 
-MAKE_HOOK(0, ADDRESS_glaiel__SQLSaveFile__SQL,
+MAKE_SHOOK(0, ADDRESS_glaiel__SQLSaveFile__SQL,
     void, __cdecl, glaiel__SQLSaveFile__SQL,
     SQLSaveFile *thiss, MsvcReleaseModeXString *ref_query, PodBufferPreallocated<SqlParam, 4> *params, MsvcFuncNoAlloc<glaiel__SQLSaveFile__SQL_CallableLayout1, void (sqlite3_stmt *p_stmt)> *ref_callback
 ) {

@@ -75,7 +75,7 @@ struct SqlData {
     } value;
     int32_t length; // probably dword sized
 
-    std::string untrusted_format();
+    // std::string untrusted_format();
 };
 template<>
 struct std::formatter<SqlData> : std::formatter<std::string> {
@@ -107,22 +107,22 @@ struct std::formatter<SqlData> : std::formatter<std::string> {
         return std::formatter<std::string>::format(s, ctx);
     }
 };
-inline std::string SqlData::untrusted_format() {
-    // for debug printing, to allow "maybe pointers" to SqlData to be scrutinized without punishment
-    SqlData buf;
-    if(jf_read(this, &buf)) {
-        switch(buf.type) {
-            case Text:
-                return std::format("{} <string data@{:p}, unused={}>", buf.type, buf.value.as_blob_ptr, buf.length);
-                break;
-            default:
-                return std::format("{} {}", buf.type, buf);
-                break;
-        }
-    } else {
-        return "<illegal pointer dereference>";
-    }
-}
+// inline std::string SqlData::untrusted_format() {
+//     // for debug printing, to allow "maybe pointers" to SqlData to be scrutinized without punishment
+//     SqlData buf;
+//     if(jf_read(this, &buf)) {
+//         switch(buf.type) {
+//             case Text:
+//                 return std::format("{} <string data@{:p}, unused={}>", buf.type, buf.value.as_blob_ptr, buf.length);
+//                 break;
+//             default:
+//                 return std::format("{} {}", buf.type, buf);
+//                 break;
+//         }
+//     } else {
+//         return "<illegal pointer dereference>";
+//     }
+// }
 
 struct SqlParam {
     const char* name;

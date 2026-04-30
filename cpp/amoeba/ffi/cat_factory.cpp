@@ -13,17 +13,21 @@
 //
 // polymeric 2026
 
-MAKE_DPORTAL(DATAOFF_glaiel__MewDirector__p_singleton,
+MAKE_SDPORTAL(DATAOFF_glaiel__MewDirector__p_singleton,
     MewDirector *, get_p_mewdirector_singleton
 )
 
-MAKE_FPORTAL(ADDRESS_glaiel__CatData_ctor,
+MAKE_STPORTAL(0, TLS0OFF_xoshiro256p_rng_context,
+    Xoshiro256pContext, get_xoshiro256p_rng_context
+)
+
+MAKE_SFPORTAL(ADDRESS_glaiel__CatData_ctor,
     CatData *, __cdecl, glaiel__CatData_ctor,
     (CatData *thiss),
     (thiss)
 )
 
-MAKE_FPORTAL(ADDRESS_glaiel__CatData_dtor,
+MAKE_SFPORTAL(ADDRESS_glaiel__CatData_dtor,
     void, __cdecl, glaiel__CatData_dtor,
     (CatData *thiss),
     (thiss)
@@ -41,7 +45,7 @@ ManagedCatData new_default_cat() {
     return ManagedCatData(p_new_cat);
 }
 
-MAKE_FPORTAL(ADDRESS_glaiel__SerializeCatData,
+MAKE_SFPORTAL(ADDRESS_glaiel__SerializeCatData,
     void, __cdecl, glaiel__SerializeCatData,
     (struct CatData* cat, struct ByteStream *byte_stream, bool assert_version_cutoff_on_load),
     (cat, byte_stream, assert_version_cutoff_on_load)
@@ -284,7 +288,7 @@ std::unordered_map<int64_t, ManagedCatData> load_all_cats() {
 // Hook this function so that we can suppress name history updates when we manually call the breed function
 static bool glaiel__CatData_unk_init_register_in_name_history_override = false;
 static bool glaiel__CatData_unk_init_register_in_name_history_val = false;
-MAKE_HOOK(0, ADDRESS_glaiel__CatData_unk_init,
+MAKE_SHOOK(0, ADDRESS_glaiel__CatData_unk_init,
     void, __cdecl, glaiel__CatData_unk_init,
     CatData *p_cat, void *ofstream_eliminated_by_opt, int32_t sex, bool register_in_name_history
 ) {
@@ -295,19 +299,19 @@ MAKE_HOOK(0, ADDRESS_glaiel__CatData_unk_init,
     glaiel__CatData_unk_init_hook.orig(p_cat, ofstream_eliminated_by_opt, sex, our_register_in_name_history);
 }
 
-MAKE_FPORTAL(ADDRESS_glaiel__CatData_unk_init,
+MAKE_SFPORTAL(ADDRESS_glaiel__CatData_unk_init,
     CatData *, __cdecl, glaiel__CatData_unk_init,
     (CatData *p_cat, void *ofstream_eliminated_by_opt, int32_t sex, bool register_in_name_history),
     (p_cat, ofstream_eliminated_by_opt, sex, register_in_name_history)
 )
 
-MAKE_FPORTAL(ADDRESS_glaiel__CatData_unk_init_bodyparts,
+MAKE_SFPORTAL(ADDRESS_glaiel__CatData_unk_init_bodyparts,
     void, __cdecl, glaiel__CatData_unk_init_bodyparts,
     (BodyParts *p_bodyparts),
     (p_bodyparts)
 )
 
-MAKE_FPORTAL(ADDRESS_glaiel__CatData__breed,
+MAKE_SFPORTAL(ADDRESS_glaiel__CatData__breed,
     void, __cdecl, glaiel__CatData__breed,
     (CatData *p_kitten, CatData *p_parent_a, CatData *p_parent_b, double coi, void *vector_of_furniture_effects),
     // TODO furniture effects, the house interstitial function retrieves vector_of_furniture_effects based on the room where the deed was done
@@ -315,20 +319,19 @@ MAKE_FPORTAL(ADDRESS_glaiel__CatData__breed,
 )
 
 ManagedCatData make_stray(Xoshiro256pContext *rng_override) {
-    auto *p_tls = get_tls0_base<char>();
-    Xoshiro256pContext *p_rng = reinterpret_cast<Xoshiro256pContext *>(p_tls + TLS0OFF_xoshiro256p_rng_context);
-    Xoshiro256pContext rng_backup = *p_rng;
+    Xoshiro256pContext &rng = get_xoshiro256p_rng_context();
+    Xoshiro256pContext rng_backup = rng;
     if(rng_override != nullptr) {
-        *p_rng = *rng_override;
+        rng = *rng_override;
     }
     ManagedCatData cat = new_default_cat();
     // "Now I am become Cat, destroyer of worlds, small animals, and upholstery"
     glaiel__CatData_unk_init(cat.get(), nullptr, 3, false);
     glaiel__CatData_unk_init_bodyparts(&cat->body_parts);
     if(rng_override != nullptr) {
-        *rng_override = *p_rng;
+        *rng_override = rng;
     }
-    *p_rng = rng_backup;
+    rng = rng_backup;
     return cat;
 }
 
@@ -450,11 +453,10 @@ double calculate_coi(int64_t parent_a_key, int64_t parent_b_key) {
 }
 
 ManagedCatData make_kitten(CatData *p_parent_a, CatData *p_parent_b, double coi, Xoshiro256pContext *rng_override) {
-    auto *p_tls = get_tls0_base<char>();
-    Xoshiro256pContext *p_rng = reinterpret_cast<Xoshiro256pContext *>(p_tls + TLS0OFF_xoshiro256p_rng_context);
-    Xoshiro256pContext rng_backup = *p_rng;
+    Xoshiro256pContext &rng = get_xoshiro256p_rng_context();
+    Xoshiro256pContext rng_backup = rng;
     if(rng_override != nullptr) {
-        *p_rng = *rng_override;
+        rng = *rng_override;
     }
     ManagedCatData kitten = new_default_cat();
     glaiel__CatData_unk_init_register_in_name_history_override = true;
@@ -463,8 +465,8 @@ ManagedCatData make_kitten(CatData *p_parent_a, CatData *p_parent_b, double coi,
     glaiel__CatData__breed(kitten.get(), p_parent_a, p_parent_b, coi, nullptr);
     glaiel__CatData_unk_init_register_in_name_history_override = false;
     if(rng_override != nullptr) {
-        *rng_override = *p_rng;
+        *rng_override = rng;
     }
-    *p_rng = rng_backup;
+    rng = rng_backup;
     return kitten;
 }

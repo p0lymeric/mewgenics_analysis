@@ -8,10 +8,10 @@
 
 // Performs a potentially unsound read behind an address, without risk of triggering a fault.
 // "judgment-free read" or, "just f'ing read"
-template<class T>
-bool jf_read(const void *addr, T *buf) {
-    return ReadProcessMemory(GetCurrentProcess(), addr, buf, sizeof(T), NULL);
-}
+// template<class T>
+// bool jf_read(const void *addr, T *buf) {
+//     return ReadProcessMemory(GetCurrentProcess(), addr, buf, sizeof(T), NULL);
+// }
 
 // Read size can be returned in case the user is interested in knowing if the read managed to scrape some data before
 // faulting at a page boundary.
@@ -46,4 +46,14 @@ inline void *host_realloc(void *ptr, size_t size) {
     } else {
         return HeapReAlloc(GetProcessHeap(), 0, ptr, size);
     }
+}
+
+// Get the size of a mapped image
+inline size_t get_pe_image_mapped_size(HMODULE module) {
+    auto base = reinterpret_cast<uintptr_t>(module);
+
+    IMAGE_DOS_HEADER *dos_header = reinterpret_cast<IMAGE_DOS_HEADER *>(base);
+    IMAGE_NT_HEADERS *nt_headers = reinterpret_cast<IMAGE_NT_HEADERS *>(base + dos_header->e_lfanew);
+
+    return nt_headers->OptionalHeader.SizeOfImage;
 }
