@@ -35,7 +35,34 @@ void asan_error_report_callback(const char *report) {
 }
 #endif
 
-bool on_attach() {
+enum class AmoebaErrorCode {
+    Success,
+    FailedToResolveSymbol,
+    FailedToHook,
+    FailedToUnhook,
+};
+
+std::string get_user_facing_error_message(AmoebaErrorCode error_code) {
+    std::string builder;
+    switch(error_code) {
+        case AmoebaErrorCode::Success:
+            builder += "Something failed successfully.\n";
+            break;
+        case AmoebaErrorCode::FailedToResolveSymbol:
+            builder += std::format("A function/data symbol failed to resolve.\n");
+            break;
+        case AmoebaErrorCode::FailedToHook:
+            builder += std::format("A function hook failed to install.\n");
+            break;
+        case AmoebaErrorCode::FailedToUnhook:
+            builder += std::format("A function hook failed to uninstall.\n");
+            break;
+    }
+
+    return builder;
+}
+
+AmoebaErrorCode on_attach() {
     // Actual virtual address where mapped executable begins
     HMODULE host_exec_module = GetModuleHandle(NULL);
     uintptr_t host_exec_base_va = reinterpret_cast<uintptr_t>(host_exec_module);
@@ -78,15 +105,17 @@ bool on_attach() {
     // Resolve symbols (calculate VAs, do proc lookups, do signature scans)
     {
         MAKE_STOPWATCH_SCOPE(sct, "symbol resolution");
+        // Resolve portals (trampolines to functions and data)
         if(!SPortalRegistry::resolve_portals(host_exec_base_va, host_exec_image_size)) {
             G.symbol_resolution_failed = true;
         }
+        // Resolve function hook targets
         if(!SFunctionHookRegistry::resolve_hooks(host_exec_base_va, host_exec_image_size, 0)) {
             G.symbol_resolution_failed = true;
         }
         // SDL is exported by Mewgenics.exe. If we fail to locate that, we'll just crash.
         if(!SFunctionHookRegistry::resolve_hooks(host_exec_base_va, host_exec_image_size, 1)) {
-            return false;
+            return AmoebaErrorCode::FailedToResolveSymbol;
         }
     }
     // Try to install function hooks
@@ -99,61 +128,64 @@ bool on_attach() {
                 // Use Mewjector if present for coordinated hooking
                 if(!SFunctionHookRegistry::install_hooks(EFunctionHookProvider::Mewjector, 0)) {
                     // if hook installation failed, call TerminateProcess instead of conventional exit
-                    return false;
+                    return AmoebaErrorCode::FailedToHook;
                 }
                 G.dll_can_self_eject = false;
             } else {
                 if(!SFunctionHookRegistry::install_hooks(EFunctionHookProvider::Detours, 0)) {
                     // if hook installation failed, call TerminateProcess instead of conventional exit
-                    return false;
+                    return AmoebaErrorCode::FailedToHook;
                 }
             }
         }
         // except SDL, which is located by GetProcAddress and is used to display an error message.
         if(!SFunctionHookRegistry::install_hooks(EFunctionHookProvider::Detours, 1)) {
             // if hook installation failed, call TerminateProcess instead of conventional exit
-            return false;
+            return AmoebaErrorCode::FailedToHook;
         }
     }
 
-    return true;
+    return AmoebaErrorCode::Success;
 }
 
-bool on_unload_detach() {
+AmoebaErrorCode on_unload_detach() {
     D::info("DllMain DLL_PROCESS_DETACH (unload)\n");
     // Try to gracefully remove our hooks if this dll was unloaded outside a process exit.
     // We would've already tried to uninstall hooks when self-ejecting, BUT
     // we also need to call uninstall here to handle external tool ejection (e.g. via System Informer).
     if(!SFunctionHookRegistry::uninstall_hooks_all(true)) {
         // if hook uninstallation failed, call TerminateProcess
-        return false;
+        return AmoebaErrorCode::FailedToUnhook;
     }
     deinitialize_imgui();
-    return true;
+    return AmoebaErrorCode::Success;
 }
 
-bool on_exitprocess_detach() {
+AmoebaErrorCode on_exitprocess_detach() {
     D::info("DllMain DLL_PROCESS_DETACH (ExitProcess)\n");
     // May as well clean up resources properly, even if the process is going down.
     // Remove hooks, but don't fail if the API is unable to uninstall hooks.
     if(!SFunctionHookRegistry::uninstall_hooks_all(false)) {
         // if hook uninstallation failed, call TerminateProcess
-        return false;
+        return AmoebaErrorCode::FailedToUnhook;
     }
     deinitialize_imgui();
-    return true;
+    return AmoebaErrorCode::Success;
 }
 
-void final_rites(bool is_detach, bool cause_is_error) {
+void final_rites(bool is_detach, AmoebaErrorCode error_code) {
     // If we are gracefully detaching, close the console window.
     // Otherwise leave the console open, if only for the split second that a
     // diagnostic print could flicker on screen
-    if(cause_is_error) {
+    if(error_code != AmoebaErrorCode::Success) {
         if(is_detach) {
             D::error("An unrecoverable error occurred during dll uninitialization.\n");
         } else {
             D::error("An unrecoverable error occurred during dll initialization.\n");
         }
+        std::string user_facing_error_message = get_user_facing_error_message(error_code);
+        D::error("{}", user_facing_error_message);
+        D::error("Amoeba will now terminate the host process.\n");
     } else {
         FREE_CONSOLE();
     }
@@ -183,7 +215,7 @@ void do_forced_hook_install() {
 }
 
 void do_process_termination() {
-    final_rites(true, false);
+    final_rites(true, AmoebaErrorCode::Success);
     TerminateProcess(GetCurrentProcess(), 1);
 }
 
@@ -240,7 +272,7 @@ BOOL WINAPI DllMain(
         return TRUE;
     }
 
-    bool terminate_process = false;
+    AmoebaErrorCode error_code = AmoebaErrorCode::Success;
 
     // Perform actions based on the reason for calling.
     switch(fdwReason) {
@@ -252,9 +284,8 @@ BOOL WINAPI DllMain(
             G.dll_base_va = reinterpret_cast<uintptr_t>(hinstDLL);
             G.dll_image_size = get_pe_image_mapped_size(hinstDLL);
 
-            if(!on_attach()) {
-                terminate_process = true;
-            }
+            error_code = on_attach();
+
             break;
 
         case DLL_THREAD_ATTACH:
@@ -269,20 +300,17 @@ BOOL WINAPI DllMain(
             // Perform any necessary cleanup.
             if(lpReserved == NULL) {
                 // traversed when the dll is ejected
-                if(!on_unload_detach()) {
-                    terminate_process = true;
-                }
+                error_code = on_unload_detach();
             } else {
                 // traversed when Mewgenics is exiting
-                if(!on_exitprocess_detach()) {
-                    terminate_process = true;
-                }
+                error_code = on_exitprocess_detach();
             }
             break;
     }
 
+    bool terminate_process = error_code != AmoebaErrorCode::Success;
     if(fdwReason == DLL_PROCESS_DETACH || terminate_process) {
-        final_rites(fdwReason == DLL_PROCESS_DETACH, terminate_process);
+        final_rites(fdwReason == DLL_PROCESS_DETACH, error_code);
     }
 
     if(terminate_process) {
