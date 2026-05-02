@@ -14,7 +14,7 @@
 #ifdef ENABLE_STOPWATCHES
 #define MAKE_STOPWATCH_SCOPE(var, label) ScopeTimer var(label)
 #define MAKE_STOPWATCH_CHECKPOINT(var, label) CheckpointTimer var(label)
-#define STOPWATCH_CHECKPOINT_LAP(var, checkpoint_name) var.check(checkpoint_name)
+#define STOPWATCH_CHECKPOINT_LAP(var, checkpoint_name) var.lap(checkpoint_name)
 #else
 #define MAKE_STOPWATCH_SCOPE(var, label)
 #define MAKE_STOPWATCH_CHECKPOINT(var, label)

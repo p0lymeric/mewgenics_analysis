@@ -2,6 +2,9 @@
 
 #include <windows.h>
 
+#include <cstddef>
+#include <cstdint>
+
 // Virtual memory utilities
 //
 // polymeric 2026
@@ -22,10 +25,9 @@
 //     return bytes_read;
 // }
 
-// Gets the base pointer for thread-local-storage slot 0.
-template<typename T>
-T *get_tls0_base() {
-    return reinterpret_cast<T **>(__readgsqword(0x58))[0];
+// Gets the base pointer for a thread-local-storage slot
+inline uint8_t *get_tls_base(DWORD slot) {
+    return reinterpret_cast<uint8_t **>(__readgsqword(0x58))[slot];
 }
 
 // Allocate onto the host process' heap

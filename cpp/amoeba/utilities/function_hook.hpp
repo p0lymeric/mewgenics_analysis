@@ -58,7 +58,8 @@ enum class EFunctionHookProvider {
 
 class IFunctionHookDescriptor {
 public:
-    virtual bool install(uintptr_t offset, size_t size, EFunctionHookProvider api_provider) = 0;
+    virtual bool resolve(uintptr_t offset, size_t size) = 0;
+    virtual bool install(EFunctionHookProvider api_provider) = 0;
     virtual bool uninstall(EFunctionHookProvider api_provider) = 0;
 };
 
@@ -114,7 +115,17 @@ public:
         }
     }
 
-    static bool install_hooks(uintptr_t host_exec_base_va, size_t host_exec_image_size, EFunctionHookProvider api_provider, int group) {
+    static bool resolve_hooks(uintptr_t host_exec_base_va, size_t host_exec_image_size, int group) {
+        FunctionHookRegistryIndex &registry = SFunctionHookRegistry::get_registry(group);
+        for(auto hook : registry.hook_descriptors) {
+            if (!hook->resolve(host_exec_base_va, host_exec_image_size)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static bool install_hooks(EFunctionHookProvider api_provider, int group) {
         // SFunctionHookRegistry will generally:
         // - check if the API is present if necessary
         // - call any global init functions if required (SFunctionHookRegistry assumes it owns global init/deinit routines)
@@ -154,7 +165,7 @@ public:
                     return false;
                 }
                 for(auto hook : registry.hook_descriptors) {
-                    if (!hook->install(host_exec_base_va, host_exec_image_size, api_provider)) {
+                    if (!hook->install(api_provider)) {
                         return false;
                     }
                 }
@@ -169,7 +180,7 @@ public:
                     return false;
                 }
                 for(auto hook : registry.hook_descriptors) {
-                    if (!hook->install(host_exec_base_va, host_exec_image_size, api_provider)) {
+                    if (!hook->install(api_provider)) {
                         return false;
                     }
                 }
@@ -289,13 +300,20 @@ public:
 
     virtual FP calculate_target(uintptr_t offset, size_t size) = 0;
 
-    bool install(uintptr_t offset, size_t size, EFunctionHookProvider api_provider) override {
+    bool resolve(uintptr_t offset, size_t size) override {
         this->target = this->calculate_target(offset, size);
         if(this->target == nullptr) {
             // e.g. if GetProcAddress were to fail
             return false;
         }
+        return true;
+    }
 
+    bool install(EFunctionHookProvider api_provider) override {
+        if(this->target == nullptr) {
+            // e.g. if GetProcAddress were to fail
+            return false;
+        }
         switch(api_provider) {
             #ifdef SUPPORT_MINHOOK_HOOK_IMPL
             case EFunctionHookProvider::MinHook:
@@ -321,7 +339,7 @@ public:
                 if(const MewjectorAPI *mj = MJ_SUPPORT_GetAPI(); mj != NULL) {
                     // NB: MJ doesn't adjust any RIP-relative instructions, if any were to exist in the stolen region
                     if(mj->InstallHook(
-                        reinterpret_cast<UINT_PTR>(this->target) - offset,
+                        reinterpret_cast<UINT_PTR>(this->target) - reinterpret_cast<UINT_PTR>(GetModuleHandle(NULL)),
                         0,
                         reinterpret_cast<void *>(this->detour),
                         reinterpret_cast<void **>(&this->orig),

@@ -1,5 +1,8 @@
 #pragma once
 
+#include "utilities/memory.hpp" // IWYU pragma: keep
+
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -23,7 +26,7 @@
 
 #define MAKE_TPORTAL(slot, offset, type, name)\
     static type &name() { \
-        uint8_t *p_target = reinterpret_cast<uint8_t **>(__readgsqword(0x58))[slot] + offset; \
+        uint8_t *p_target = get_tls_base(slot) + offset; \
         return *reinterpret_cast<type *>(p_target); \
     }
 
@@ -42,13 +45,13 @@
 #define MAKE_STPORTAL(slot, sig, type, name) \
     static SigPortalDescriptor<type *, true, decltype(sig)> name##_pd(sig); \
     static type &name() { \
-        uint8_t *p_target = reinterpret_cast<uint8_t **>(__readgsqword(0x58))[slot] + reinterpret_cast<size_t>(name##_pd.target); \
+        uint8_t *p_target = get_tls_base(slot) + reinterpret_cast<size_t>(name##_pd.target); \
         return *reinterpret_cast<type *>(p_target); \
     }
 
 class IPortalDescriptor {
 public:
-    virtual void resolve(uintptr_t offset, size_t size) = 0;
+    virtual bool resolve(uintptr_t offset, size_t size) = 0;
 };
 
 class SPortalRegistry {
@@ -60,10 +63,13 @@ public:
         return registry;
     }
 
-    static void resolve_portals(uintptr_t host_exec_base_va, size_t host_exec_image_size) {
+    static bool resolve_portals(uintptr_t host_exec_base_va, size_t host_exec_image_size) {
         for(auto portal : SPortalRegistry::get_registry()) {
-            portal->resolve(host_exec_base_va, host_exec_image_size);
+            if(!portal->resolve(host_exec_base_va, host_exec_image_size)) {
+                return false;
+            }
         }
+        return true;
     }
 };
 
@@ -84,9 +90,10 @@ public:
         }
     }
 
-    void resolve(uintptr_t offset, size_t size) override {
+    bool resolve(uintptr_t offset, size_t size) override {
         (void)size;
         this->target = reinterpret_cast<T>(this->target_canonical + offset);
+        return true;
     }
 };
 
@@ -107,7 +114,12 @@ public:
         }
     }
 
-    void resolve(uintptr_t offset, size_t size) override {
-        target = reinterpret_cast<T>(sig.find_unique_match_or_none(reinterpret_cast<uint8_t *>(offset), size));
+    bool resolve(uintptr_t offset, size_t size) override {
+        uint8_t *result = sig.find_unique_match_or_none(reinterpret_cast<uint8_t *>(offset), size);
+        if(result == nullptr) {
+            return false;
+        }
+        target = reinterpret_cast<T>(result);
+        return true;
     }
 };

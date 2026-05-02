@@ -91,7 +91,7 @@ public:
             uint32_t equality_bytewise = _mm_movemask_epi8(vec_eq_both_bytes);
 
             while(equality_bytewise != 0) {
-                // get rightmost set index
+                // get rightmost set index (lower indices first)
                 int bitpos = std::countr_zero(equality_bytewise);
 
                 uint8_t *match_start = addr + bitpos - this->first_nonwildcard_idx;
@@ -194,8 +194,9 @@ private:
     static bool stage2_compare(const uint8_t *ptr_0, const uint8_t *ptr_1, const uint8_t *ptr_mask, size_t size_bytes) {
         size_t offset = 0;
 
-        // Appears to give negative performance effects in practice. Understandable because signatures tend to be short
-        // and miscompares early into the sequence should be very common case.
+        // Appears to give modest speedup when a match is assured in synthetic benchmarking, but hurts performance
+        // in practical use when a a real program is scanned to locate a set of signatures.
+        // Understandable because signatures tend to be short and early miscomparisons should be common case.
         #ifdef USE_SSE2_INTRINSICS_STAGE2
         const __m128i vec_zero = _mm_setzero_si128();
         while(offset + 16 <= size_bytes) {
@@ -308,9 +309,9 @@ public:
 template<typename PD>
 struct BDirectSig : ISigDescriptor {
     PD pattern;
-    size_t offset;
+    ptrdiff_t offset;
 
-    constexpr BDirectSig(PD pattern, size_t offset) :
+    constexpr BDirectSig(PD pattern, ptrdiff_t offset) :
         pattern(std::move(pattern)), offset(offset)
     {}
 
@@ -343,12 +344,12 @@ public:
 template<typename PD>
 struct BIndirectSig : ISigDescriptor {
     PD pattern;
-    size_t offset;
-    size_t length;
+    ptrdiff_t offset;
+    uint8_t length;
     bool signed_;
     bool rip_relative;
 
-    constexpr BIndirectSig(PD pattern, size_t offset, size_t length, bool signed_, bool rip_relative) :
+    constexpr BIndirectSig(PD pattern, ptrdiff_t offset, uint8_t length, bool signed_, bool rip_relative) :
         pattern(std::move(pattern)), offset(offset), length(length), signed_(signed_), rip_relative(rip_relative)
     {}
 
@@ -411,12 +412,12 @@ public:
     IndirectSig() = delete;
 
     template<FixedString FS>
-    static consteval auto make(size_t offset, size_t length, bool signed_, bool rip_relative) {
+    static consteval auto make(ptrdiff_t offset, uint8_t length, bool signed_, bool rip_relative) {
         auto pd = PatternDescriptor::make<FS>();
         return BIndirectSig(pd, offset, length, signed_, rip_relative);
     }
 
-    static BIndirectSig<VectorPatternDescriptor> make(const std::string_view sv, size_t offset, size_t length, bool signed_, bool rip_relative) {
+    static BIndirectSig<VectorPatternDescriptor> make(const std::string_view sv, ptrdiff_t offset, uint8_t length, bool signed_, bool rip_relative) {
         VectorPatternDescriptor pd = PatternDescriptor::make(sv);
         return BIndirectSig(pd, offset, length, signed_, rip_relative);
     }

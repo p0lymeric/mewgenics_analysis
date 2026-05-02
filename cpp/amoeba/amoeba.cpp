@@ -41,6 +41,7 @@ bool on_attach() {
     uintptr_t host_exec_base_va = reinterpret_cast<uintptr_t>(host_exec_module);
     size_t host_exec_image_size = get_pe_image_mapped_size(host_exec_module);
     G.host_exec_base_va = host_exec_base_va;
+    G.host_exec_image_size = host_exec_image_size;
 
     // Create a Win32 console window with which to print log messages
     ALLOC_CONSOLE();
@@ -61,6 +62,7 @@ bool on_attach() {
 
     D::info("DllMain DLL_PROCESS_ATTACH\n");
     D::info("Hook base VA: 0x{:x}\n", G.dll_base_va);
+    D::info("Hook mapped size: 0x{:x}\n", G.dll_image_size);
     D::info("Executable base VA: 0x{:x}\n", host_exec_base_va);
     D::info("Executable mapped size: {}\n", host_exec_image_size);
     D::info("Executable SHA-256: {}\n", G.exe_actual_sha256.has_value() ? hash256bit_to_string(G.exe_actual_sha256.value()) : "<unknown>");
@@ -73,29 +75,42 @@ bool on_attach() {
     D::info("ASAN is present\n");
     #endif
 
-    // Resolve portals (trampolines to functions and data)
+    // Resolve symbols (calculate VAs, do proc lookups, do signature scans)
     {
-        MAKE_STOPWATCH_SCOPE(sct, "portal installation");
-        SPortalRegistry::resolve_portals(host_exec_base_va, host_exec_image_size);
+        MAKE_STOPWATCH_SCOPE(sct, "symbol resolution");
+        if(!SPortalRegistry::resolve_portals(host_exec_base_va, host_exec_image_size)) {
+            G.symbol_resolution_failed = true;
+        }
+        if(!SFunctionHookRegistry::resolve_hooks(host_exec_base_va, host_exec_image_size, 0)) {
+            G.symbol_resolution_failed = true;
+        }
+        // SDL is exported by Mewgenics.exe. If we fail to locate that, we'll just crash.
+        if(!SFunctionHookRegistry::resolve_hooks(host_exec_base_va, host_exec_image_size, 1)) {
+            return false;
+        }
     }
     // Try to install function hooks
     {
         MAKE_STOPWATCH_SCOPE(sct, "function hook installation");
-        if(SFunctionHookRegistry::api_is_present(EFunctionHookProvider::Mewjector)) {
-            // Use Mewjector if present for coordinated hooking
-            if(!SFunctionHookRegistry::install_hooks(host_exec_base_va, host_exec_image_size, EFunctionHookProvider::Mewjector, 0)) {
-                // if hook installation failed, call TerminateProcess instead of conventional exit
-                return false;
+        // If we fail to locate some symbols, don't hook any of them.
+        G.dll_can_self_eject = true;
+        if(!G.symbol_resolution_failed) {
+            if(SFunctionHookRegistry::api_is_present(EFunctionHookProvider::Mewjector)) {
+                // Use Mewjector if present for coordinated hooking
+                if(!SFunctionHookRegistry::install_hooks(EFunctionHookProvider::Mewjector, 0)) {
+                    // if hook installation failed, call TerminateProcess instead of conventional exit
+                    return false;
+                }
+                G.dll_can_self_eject = false;
+            } else {
+                if(!SFunctionHookRegistry::install_hooks(EFunctionHookProvider::Detours, 0)) {
+                    // if hook installation failed, call TerminateProcess instead of conventional exit
+                    return false;
+                }
             }
-            G.dll_can_self_eject = false;
-        } else {
-            if(!SFunctionHookRegistry::install_hooks(host_exec_base_va, host_exec_image_size, EFunctionHookProvider::Detours, 0)) {
-                // if hook installation failed, call TerminateProcess instead of conventional exit
-                return false;
-            }
-            G.dll_can_self_eject = true;
         }
-        if(!SFunctionHookRegistry::install_hooks(host_exec_base_va, host_exec_image_size, EFunctionHookProvider::Detours, 1)) {
+        // except SDL, which is located by GetProcAddress and is used to display an error message.
+        if(!SFunctionHookRegistry::install_hooks(EFunctionHookProvider::Detours, 1)) {
             // if hook installation failed, call TerminateProcess instead of conventional exit
             return false;
         }
@@ -106,7 +121,7 @@ bool on_attach() {
 
 bool on_unload_detach() {
     D::info("DllMain DLL_PROCESS_DETACH (unload)\n");
-    // Try to gracefully remove our hooks if this dll.
+    // Try to gracefully remove our hooks if this dll was unloaded outside a process exit.
     // We would've already tried to uninstall hooks when self-ejecting, BUT
     // we also need to call uninstall here to handle external tool ejection (e.g. via System Informer).
     if(!SFunctionHookRegistry::uninstall_hooks_all(true)) {
@@ -155,6 +170,16 @@ void final_rites(bool is_detach, bool cause_is_error) {
     G.tlogger.reset();
     // then flush and close the log
     G.tlogger.close();
+}
+
+void do_forced_hook_install() {
+    if(SFunctionHookRegistry::api_is_present(EFunctionHookProvider::Mewjector)) {
+        // Use Mewjector if present for coordinated hooking
+        SFunctionHookRegistry::install_hooks(EFunctionHookProvider::Mewjector, 0);
+        G.dll_can_self_eject = false;
+    } else {
+        SFunctionHookRegistry::install_hooks(EFunctionHookProvider::Detours, 0);
+    }
 }
 
 void do_process_termination() {
@@ -225,6 +250,7 @@ BOOL WINAPI DllMain(
             DetourRestoreAfterWith();
 
             G.dll_base_va = reinterpret_cast<uintptr_t>(hinstDLL);
+            G.dll_image_size = get_pe_image_mapped_size(hinstDLL);
 
             if(!on_attach()) {
                 terminate_process = true;

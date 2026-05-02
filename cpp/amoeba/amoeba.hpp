@@ -68,6 +68,9 @@ void deinitialize_imgui();
 // Call to finalize our logs and kill the host process
 // Exporter: amoeba.cpp
 void do_process_termination();
+// Call to install function hooks, skipping unresolved symbols, without safety aborts on hook failure(s)
+// Exporter: amoeba.cpp
+void do_forced_hook_install();
 // Call to gracefully remove Amoeba from the process
 // Exporter: amoeba.cpp
 void initiate_dll_eject();
@@ -88,17 +91,23 @@ enum TlogVsid : uint32_t {
 struct GlobalContext {
     // amoeba.dll offset.
     uintptr_t dll_base_va;
+    uintptr_t dll_image_size;
 
     // Mewgenics.exe offset.
     uintptr_t host_exec_base_va;
+    uintptr_t host_exec_image_size;
 
-    // Whether it is permissible for the dll to self-eject
+    // Whether it is permissible for the dll to self-eject.
     // (false if the dll cannot self-uninstall its hooks)
     bool dll_can_self_eject;
 
     // Mewgenics.exe hash.
     std::optional<Hash256Bit> exe_actual_sha256;
     bool exe_hash_mismatch_detected;
+
+    // Whether any non-critical symbols failed to resolve.
+    // (false if any sig or proc lookups failed that did not cause a forced crash)
+    bool symbol_resolution_failed;
 
     // Binary file logger. Normally inactive but can be enabled for logging.
     TransactionLogger tlogger;

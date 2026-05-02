@@ -177,10 +177,46 @@ void show_exit_confirmation_modal(bool signal) {
     }
 }
 
-void show_version_mismatch_modal() {
-    if(G.exe_hash_mismatch_detected && !P.user_shown_version_mismatch_modal) {
+void show_symbol_resolution_failure_modal(bool signal) {
+    if(signal) {
+        ImGui::OpenPopup("Error: Symbol resolution failure");
+    }
+    // Always center this window when appearing
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    bool x_button = true;
+    if(ImGui::BeginPopupModal("Error: Symbol resolution failure", &x_button, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImguiTextStdFmt("Amoeba was unable to locate some symbols that it expected to hook or call.");
+        ImguiTextStdFmt("It has stopped loading at a safe point. Signatures in amoeba.hpp will need to be updated.");
+        ImguiTextStdFmt("You may forcefully continue (skipping hooking unlocated symbols), eject Amoeba or exit Mewgenics.");
+        ImGui::Separator();
+        ImguiTextStdFmt("Expected SHA-256: {}", hash256bit_to_string(EXE_SHA256));
+        ImguiTextStdFmt("Actual SHA-256: {}", G.exe_actual_sha256.has_value() ? hash256bit_to_string(G.exe_actual_sha256.value()) : "<unknown>");
+        ImGui::Separator();
+
+        ImGui::SetItemDefaultFocus();
+        if(ImGui::Button("Force continue", ImVec2(120, 0)) || !x_button) {
+            do_forced_hook_install();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if(ImGui::Button("Eject Amoeba", ImVec2(120, 0))) {
+            P.request_dll_eject = true;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if(ImGui::Button("Exit process", ImVec2(120, 0))) {
+            do_process_termination();
+            // unreachable
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
+void show_version_mismatch_modal(bool signal) {
+    if(signal) {
         ImGui::OpenPopup("Warning: Version mismatch");
-        P.user_shown_version_mismatch_modal = true;
     }
     // Always center this window when appearing
     ImVec2 center = ImGui::GetMainViewport()->GetCenter();
@@ -188,7 +224,7 @@ void show_version_mismatch_modal() {
     bool x_button = true;
     if(ImGui::BeginPopupModal("Warning: Version mismatch", &x_button, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImguiTextStdFmt("Amoeba detected a different Mewgenics.exe than expected, by hash comparison.");
-        ImguiTextStdFmt("Hardcoded memory offsets in amoeba.hpp will almost certainly need to be updated.");
+        ImguiTextStdFmt("To resolve this warning, the expected hash value in amoeba.hpp should be updated.");
         ImguiTextStdFmt("You may continue as if this mismatch was not checked, eject Amoeba, or exit Mewgenics.");
         ImGui::Separator();
         ImguiTextStdFmt("Expected SHA-256: {}", hash256bit_to_string(EXE_SHA256));
@@ -211,6 +247,22 @@ void show_version_mismatch_modal() {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
+    }
+}
+
+void show_load_exception_modals_if_needed() {
+    if(G.symbol_resolution_failed && !P.user_shown_version_mismatch_modal) {
+        show_symbol_resolution_failure_modal(true);
+        P.user_shown_version_mismatch_modal = true;
+    } else {
+        show_symbol_resolution_failure_modal(false);
+    }
+
+    if(G.exe_hash_mismatch_detected && !P.user_shown_version_mismatch_modal) {
+        show_version_mismatch_modal(true);
+        P.user_shown_version_mismatch_modal = true;
+    } else {
+        show_version_mismatch_modal(false);
     }
 }
 
@@ -783,7 +835,7 @@ void show_data_explorer_window() {
         }
 
         if(ImGui::TreeNode("Thread-local storage")) {
-            auto *p_tls = get_tls0_base<char>();
+            auto *p_tls = get_tls_base(0);
             ImguiTextStdFmt("TLS Slot 0 base VA: {:p}", reinterpret_cast<void *>(p_tls));
             Xoshiro256pContext &rng = get_xoshiro256p_rng_context();
             for(int i = 0; i < 4; i++) {
@@ -1873,7 +1925,7 @@ MAKE_PHOOK(1, "SDL_GL_SwapWindow",
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
 
-    show_version_mismatch_modal();
+    show_load_exception_modals_if_needed();
     if(!P.hide_all) {
         show_main_menu_bar();
         if(P.show_imgui_demo) {
