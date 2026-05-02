@@ -117,12 +117,13 @@ public:
 
     static bool resolve_hooks(uintptr_t host_exec_base_va, size_t host_exec_image_size, int group) {
         FunctionHookRegistryIndex &registry = SFunctionHookRegistry::get_registry(group);
+        bool success = true;
         for(auto hook : registry.hook_descriptors) {
             if (!hook->resolve(host_exec_base_va, host_exec_image_size)) {
-                return false;
+                success = false;
             }
         }
-        return true;
+        return success;
     }
 
     static bool install_hooks(EFunctionHookProvider api_provider, int group) {

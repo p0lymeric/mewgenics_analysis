@@ -64,12 +64,13 @@ public:
     }
 
     static bool resolve_portals(uintptr_t host_exec_base_va, size_t host_exec_image_size) {
+        bool success = true;
         for(auto portal : SPortalRegistry::get_registry()) {
             if(!portal->resolve(host_exec_base_va, host_exec_image_size)) {
-                return false;
+                success = false;
             }
         }
-        return true;
+        return success;
     }
 };
 
