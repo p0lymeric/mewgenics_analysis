@@ -5,6 +5,7 @@
 #include "utilities/sqlite3_conn_wrapper.hpp"
 #include "utilities/portal.hpp"
 
+#include <cstring>
 #include <stack>
 
 #include "lz4.h"
@@ -35,11 +36,12 @@ MAKE_SFPORTAL(ADDRESS_glaiel__CatData_dtor,
 
 void CatDataDeleter::operator()(CatData *p_cat) const {
     glaiel__CatData_dtor(p_cat);
-    delete p_cat;
+    operator delete(p_cat);
 }
 
 ManagedCatData new_default_cat() {
-    CatData *p_new_cat = reinterpret_cast<CatData *>(new char[sizeof(CatData)]()); // zero-init
+    CatData *p_new_cat = reinterpret_cast<CatData *>(operator new(sizeof(CatData)));
+    std::memset(p_new_cat, 0, sizeof(CatData));
     glaiel__CatData_ctor(p_new_cat);
 
     return ManagedCatData(p_new_cat);

@@ -89,7 +89,7 @@ AmoebaErrorCode on_attach() {
 
     D::info("DllMain DLL_PROCESS_ATTACH\n");
     D::info("Hook base VA: 0x{:x}\n", G.dll_base_va);
-    D::info("Hook mapped size: 0x{:x}\n", G.dll_image_size);
+    D::info("Hook mapped size: {}\n", G.dll_image_size);
     D::info("Executable base VA: 0x{:x}\n", host_exec_base_va);
     D::info("Executable mapped size: {}\n", host_exec_image_size);
     D::info("Executable SHA-256: {}\n", G.exe_actual_sha256.has_value() ? hash256bit_to_string(G.exe_actual_sha256.value()) : "<unknown>");

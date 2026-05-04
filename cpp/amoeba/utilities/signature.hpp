@@ -2,7 +2,7 @@
 
 // Enable use of SSE2 intrinsics, to accelerate pattern scanning
 #define USE_SSE2_INTRINSICS_STAGE1
-// #define USE_SSE2_INTRINSICS_STAGE2
+#define USE_SSE2_INTRINSICS_STAGE2
 
 #include "utilities/constexpr.hpp"
 
@@ -96,7 +96,15 @@ public:
 
                 uint8_t *match_start = addr + bitpos - this->first_nonwildcard_idx;
 
-                if(dist_pattern_first_last_nonwildcard <= 2 || stage2_compare(addr + bitpos + 1, &pattern_[this->first_nonwildcard_idx + 1], &pattern_mask_[this->first_nonwildcard_idx + 1], dist_pattern_first_last_nonwildcard - 2)) {
+                if(
+                    dist_pattern_first_last_nonwildcard <= 2 ||
+                    stage2_compare(
+                        addr + bitpos + 1,
+                        &pattern_[this->first_nonwildcard_idx + 1],
+                        &pattern_mask_[this->first_nonwildcard_idx + 1],
+                        dist_pattern_first_last_nonwildcard - 2
+                    )
+                ) {
                     if(match != nullptr) {
                         return nullptr;
                     }
@@ -119,7 +127,15 @@ public:
             if(first_byte_matches && last_byte_matches) {
                 uint8_t *match_start = addr - this->first_nonwildcard_idx;
 
-                if(dist_pattern_first_last_nonwildcard <= 2 || stage2_compare(addr + 1, &pattern_[this->first_nonwildcard_idx + 1], &pattern_mask_[this->first_nonwildcard_idx + 1], dist_pattern_first_last_nonwildcard - 2)) {
+                if(
+                    dist_pattern_first_last_nonwildcard <= 2 ||
+                    stage2_compare(
+                        addr + 1,
+                        &pattern_[this->first_nonwildcard_idx + 1],
+                        &pattern_mask_[this->first_nonwildcard_idx + 1],
+                        dist_pattern_first_last_nonwildcard - 2
+                    )
+                ) {
                     if(match != nullptr) {
                         return nullptr;
                     }
@@ -194,9 +210,8 @@ private:
     static bool stage2_compare(const uint8_t *ptr_0, const uint8_t *ptr_1, const uint8_t *ptr_mask, size_t size_bytes) {
         size_t offset = 0;
 
-        // Appears to give modest speedup when a match is assured in synthetic benchmarking, but hurts performance
-        // in practical use when a a real program is scanned to locate a set of signatures.
-        // Understandable because signatures tend to be short and early miscomparisons should be common case.
+        // Appears to give a slight speedup in a semi-practical test when a a real program is scanned,
+        // (repeatedly scanning a signature set in a tight loop to average out transient effects).
         #ifdef USE_SSE2_INTRINSICS_STAGE2
         const __m128i vec_zero = _mm_setzero_si128();
         while(offset + 16 <= size_bytes) {
@@ -208,7 +223,7 @@ private:
             // bitwise difference vector
             const __m128i vec_difference = _mm_xor_si128(vec_0, vec_1);
 
-            // "if bit i has different values and the mask bit is not set, then there is a miscompare"
+            // If bit i has different values and the mask bit is not set, then there is a miscompare.
             // miscompares[bit_i] = !vec_mask[bit_i] && vec_difference[bit_i]
             const __m128i vec_miscompares_bitwise = _mm_andnot_si128(vec_mask, vec_difference);
 
