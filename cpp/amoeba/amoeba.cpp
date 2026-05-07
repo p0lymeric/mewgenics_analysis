@@ -139,9 +139,16 @@ AmoebaErrorCode on_attach() {
             }
         }
         // except SDL, which is located by GetProcAddress and is used to display an error message.
-        if(!SFunctionHookRegistry::install_hooks(EFunctionHookProvider::Detours, 1)) {
-            // if hook installation failed, call TerminateProcess instead of conventional exit
-            return AmoebaErrorCode::FailedToHook;
+        if(SFunctionHookRegistry::api_is_present(EFunctionHookProvider::Mewjector)) {
+            if(!SFunctionHookRegistry::install_hooks(EFunctionHookProvider::Mewjector, 1)) {
+                // if hook installation failed, call TerminateProcess instead of conventional exit
+                return AmoebaErrorCode::FailedToHook;
+            }
+        } else {
+            if(!SFunctionHookRegistry::install_hooks(EFunctionHookProvider::Detours, 1)) {
+                // if hook installation failed, call TerminateProcess instead of conventional exit
+                return AmoebaErrorCode::FailedToHook;
+            }
         }
     }
 

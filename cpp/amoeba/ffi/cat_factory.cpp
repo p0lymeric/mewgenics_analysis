@@ -41,7 +41,7 @@ void CatDataDeleter::operator()(CatData *p_cat) const {
 
 ManagedCatData new_default_cat() {
     CatData *p_new_cat = reinterpret_cast<CatData *>(operator new(sizeof(CatData)));
-    std::memset(p_new_cat, 0, sizeof(CatData));
+    std::memset(reinterpret_cast<void *>(p_new_cat), 0, sizeof(CatData));
     glaiel__CatData_ctor(p_new_cat);
 
     return ManagedCatData(p_new_cat);

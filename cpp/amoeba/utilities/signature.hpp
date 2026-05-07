@@ -78,13 +78,15 @@ public:
         #ifdef USE_SSE2_INTRINSICS_STAGE1
         const __m128i vec_first_byte = _mm_set1_epi8(pattern_[this->first_nonwildcard_idx]);
         const __m128i vec_last_byte = _mm_set1_epi8(pattern_[this->last_nonwildcard_idx]);
+        const __m128i vec_first_byte_mask = _mm_set1_epi8(pattern_mask_[this->first_nonwildcard_idx]);
+        const __m128i vec_last_byte_mask = _mm_set1_epi8(pattern_mask_[this->last_nonwildcard_idx]);
         while(offset + 16 <= limit) {
             uint8_t *addr = seq_start + offset;
             const __m128i vec_first_block = _mm_loadu_si128(reinterpret_cast<const __m128i *>(addr));
             const __m128i vec_last_block = _mm_loadu_si128(reinterpret_cast<const __m128i *>(addr + dist_pattern_first_last_nonwildcard));
 
-            const __m128i vec_eq_first_byte = _mm_cmpeq_epi8(vec_first_byte, vec_first_block);
-            const __m128i vec_eq_last_byte = _mm_cmpeq_epi8(vec_last_byte, vec_last_block);
+            const __m128i vec_eq_first_byte = _mm_cmpeq_epi8(vec_first_byte, _mm_and_si128(vec_first_byte_mask, vec_first_block));
+            const __m128i vec_eq_last_byte = _mm_cmpeq_epi8(vec_last_byte, _mm_and_si128(vec_last_byte_mask, vec_last_block));
 
             const __m128i vec_eq_both_bytes = _mm_and_si128(vec_eq_first_byte, vec_eq_last_byte);
 
@@ -97,12 +99,12 @@ public:
                 uint8_t *match_start = addr + bitpos - this->first_nonwildcard_idx;
 
                 if(
-                    dist_pattern_first_last_nonwildcard <= 2 ||
+                    dist_pattern_first_last_nonwildcard <= 1 ||
                     stage2_compare(
                         addr + bitpos + 1,
                         &pattern_[this->first_nonwildcard_idx + 1],
                         &pattern_mask_[this->first_nonwildcard_idx + 1],
-                        dist_pattern_first_last_nonwildcard - 2
+                        dist_pattern_first_last_nonwildcard - 1
                     )
                 ) {
                     if(match != nullptr) {
@@ -121,19 +123,19 @@ public:
 
         while(offset < limit) {
             uint8_t *addr = seq_start + offset;
-            bool first_byte_matches = addr[0] == pattern_[this->first_nonwildcard_idx];
-            bool last_byte_matches = addr[dist_pattern_first_last_nonwildcard] == pattern_[this->last_nonwildcard_idx];
+            bool first_byte_matches = (addr[0] & pattern_mask_[this->first_nonwildcard_idx]) == pattern_[this->first_nonwildcard_idx];
+            bool last_byte_matches = (addr[dist_pattern_first_last_nonwildcard] & pattern_mask_[this->last_nonwildcard_idx]) == pattern_[this->last_nonwildcard_idx];
 
             if(first_byte_matches && last_byte_matches) {
                 uint8_t *match_start = addr - this->first_nonwildcard_idx;
 
                 if(
-                    dist_pattern_first_last_nonwildcard <= 2 ||
+                    dist_pattern_first_last_nonwildcard <= 1 ||
                     stage2_compare(
                         addr + 1,
                         &pattern_[this->first_nonwildcard_idx + 1],
                         &pattern_mask_[this->first_nonwildcard_idx + 1],
-                        dist_pattern_first_last_nonwildcard - 2
+                        dist_pattern_first_last_nonwildcard - 1
                     )
                 ) {
                     if(match != nullptr) {
@@ -175,10 +177,10 @@ protected:
                     throw std::logic_error("Given hex pattern has unexpected characters");
                 }
                 if(cnt % 2 == 0) { // nibble 0, high
-                    pattern_impl[cnt / 2] = 0;
-                    pattern_mask_impl[cnt / 2] = 0;
+                    pattern_impl[cnt / 2] = 0x00;
+                    pattern_mask_impl[cnt / 2] = 0xFF;
                     if(sv[i] == '?') {
-                        pattern_mask_impl[cnt / 2] |= 0xF0;
+                        pattern_mask_impl[cnt / 2] ^= 0xF0;
                     } else {
                         pattern_impl[cnt / 2] |= parse_char_0_to_F_as_hex(sv[i]) << 4;
                         if(this->first_nonwildcard_idx == size) {
@@ -189,7 +191,7 @@ protected:
                     }
                 } else { // nibble 1, low
                     if(sv[i] == '?') {
-                        pattern_mask_impl[cnt / 2] |= 0x0F;
+                        pattern_mask_impl[cnt / 2] ^= 0x0F;
                     } else {
                         pattern_impl[cnt / 2] |= parse_char_0_to_F_as_hex(sv[i]);
                         if(this->first_nonwildcard_idx == size) {
@@ -223,9 +225,9 @@ private:
             // bitwise difference vector
             const __m128i vec_difference = _mm_xor_si128(vec_0, vec_1);
 
-            // If bit i has different values and the mask bit is not set, then there is a miscompare.
-            // miscompares[bit_i] = !vec_mask[bit_i] && vec_difference[bit_i]
-            const __m128i vec_miscompares_bitwise = _mm_andnot_si128(vec_mask, vec_difference);
+            // If bit i has different values and the mask bit is set, then there is a miscompare.
+            // miscompares[bit_i] = vec_mask[bit_i] && vec_difference[bit_i]
+            const __m128i vec_miscompares_bitwise = _mm_and_si128(vec_mask, vec_difference);
 
             // bytewise equality vector
             const __m128i vec_equality_bytewise = _mm_cmpeq_epi8(vec_miscompares_bitwise, vec_zero);
@@ -242,7 +244,7 @@ private:
 
         while(offset < size_bytes) {
             uint8_t difference = ptr_0[offset] ^ ptr_1[offset];
-            uint8_t miscompares = ~ptr_mask[offset] & difference;
+            uint8_t miscompares = ptr_mask[offset] & difference;
             if(miscompares != 0) {
                 return false;
             }

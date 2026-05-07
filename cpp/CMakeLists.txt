@@ -19,3 +19,4 @@ add_subdirectory(lib/cmake/mewjector EXCLUDE_FROM_ALL)
 # Read our CMakeLists
 add_subdirectory(amoeba)
 add_subdirectory(cosmic_ooze)
+# add_subdirectory(tests)

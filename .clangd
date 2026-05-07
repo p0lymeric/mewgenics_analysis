@@ -48,3 +48,12 @@ CompileFlags:
         - -Icpp/cosmic_ooze
         - -DWIN32_LEAN_AND_MEAN
         - -DNOMINMAX
+
+---
+
+If:
+    PathMatch: [cpp/tests/.*]
+CompileFlags:
+    Add:
+        # The presence of compile_flags.txt encourages clangd to interpret these paths relative to workspace root
+        - -Icpp/amoeba
