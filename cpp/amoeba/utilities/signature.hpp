@@ -1,13 +1,14 @@
 #pragma once
 
-// Enable use of SSE2 intrinsics, to accelerate pattern scanning
+// Enable use of SIMD intrinsics, to accelerate pattern scanning
 #define USE_SSE2_INTRINSICS_STAGE1
+#define USE_AVX2_INTRINSICS_STAGE1
 #define USE_SSE2_INTRINSICS_STAGE2
+#define USE_AVX2_INTRINSICS_STAGE2
 
 #include "utilities/constexpr.hpp"
 
 #include <array>
-#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -15,19 +16,36 @@
 #include <string_view>
 #include <vector>
 
-#if defined(USE_SSE2_INTRINSICS_STAGE1) || defined(USE_SSE2_INTRINSICS_STAGE2)
-    #if !defined(__x86_64__) && !defined(_M_X64) && !defined(_M_AMD64)
-        #error Non-x86-64 targets are not supported.
-    #endif
-    #include <emmintrin.h>
-#endif
-
 // Signature descriptors and memory pattern scanning.
 //
 // "CATS: ALL YOUR BASE ARE BELONG TO US."
 // "Captain: You know what you doing. Take off every 'SIG'!"
 //
 // polymeric 2026
+
+#if defined(USE_SSE2_INTRINSICS_STAGE1) || defined(USE_SSE2_INTRINSICS_STAGE2) || defined(USE_AVX2_INTRINSICS_STAGE1) || defined(USE_AVX2_INTRINSICS_STAGE2)
+    #include "utilities/x86_cpuid.h"
+    #include <immintrin.h>
+#endif
+
+#if defined(USE_SSE2_INTRINSICS_STAGE1) || defined(USE_AVX2_INTRINSICS_STAGE1)
+    #if defined(_MSC_VER)
+        #include <intrin.h>
+        #pragma intrinsic(_BitScanForward)
+    #endif
+#endif
+
+// Compiler attributes
+#if defined(_MSC_VER)
+    #define MUST_INLINE __forceinline
+#else
+    #define MUST_INLINE inline __attribute__((always_inline))
+#endif
+#if defined(__GNUC__) || defined(__clang__)
+    #define TARGET(tgt) __attribute__((target(tgt)))
+#else
+    #define TARGET(tgt)
+#endif
 
 class BPatternDescriptor {
 public:
@@ -37,6 +55,8 @@ public:
 
     virtual std::span<const uint8_t> pattern() const = 0;
     virtual std::span<const uint8_t> pattern_mask() const = 0;
+
+    using stage2_compare_fp_t = bool(const uint8_t *ptr_0, const uint8_t *ptr_1, const uint8_t *ptr_mask, size_t size_bytes);
 
     uint8_t *find_unique_match_or_none(uint8_t *seq_start, size_t seq_size_bytes) const {
         std::span<const uint8_t> pattern_ = this->pattern();
@@ -74,50 +94,69 @@ public:
         size_t limit = offset + seq_size_bytes - pattern_size_bytes + 1;
         size_t dist_pattern_first_last_nonwildcard = this->last_nonwildcard_idx - this->first_nonwildcard_idx;
 
-        // ref: http://0x80.pl/notesen/2016-11-28-simd-strfind.html#generic-sse-avx2
-        #ifdef USE_SSE2_INTRINSICS_STAGE1
-        const __m128i vec_first_byte = _mm_set1_epi8(pattern_[this->first_nonwildcard_idx]);
-        const __m128i vec_last_byte = _mm_set1_epi8(pattern_[this->last_nonwildcard_idx]);
-        const __m128i vec_first_byte_mask = _mm_set1_epi8(pattern_mask_[this->first_nonwildcard_idx]);
-        const __m128i vec_last_byte_mask = _mm_set1_epi8(pattern_mask_[this->last_nonwildcard_idx]);
-        while(offset + 16 <= limit) {
-            uint8_t *addr = seq_start + offset;
-            const __m128i vec_first_block = _mm_loadu_si128(reinterpret_cast<const __m128i *>(addr));
-            const __m128i vec_last_block = _mm_loadu_si128(reinterpret_cast<const __m128i *>(addr + dist_pattern_first_last_nonwildcard));
-
-            const __m128i vec_eq_first_byte = _mm_cmpeq_epi8(vec_first_byte, _mm_and_si128(vec_first_byte_mask, vec_first_block));
-            const __m128i vec_eq_last_byte = _mm_cmpeq_epi8(vec_last_byte, _mm_and_si128(vec_last_byte_mask, vec_last_block));
-
-            const __m128i vec_eq_both_bytes = _mm_and_si128(vec_eq_first_byte, vec_eq_last_byte);
-
-            uint32_t equality_bytewise = _mm_movemask_epi8(vec_eq_both_bytes);
-
-            while(equality_bytewise != 0) {
-                // get rightmost set index (lower indices first)
-                int bitpos = std::countr_zero(equality_bytewise);
-
-                uint8_t *match_start = addr + bitpos - this->first_nonwildcard_idx;
-
-                if(
-                    dist_pattern_first_last_nonwildcard <= 1 ||
-                    stage2_compare(
-                        addr + bitpos + 1,
-                        &pattern_[this->first_nonwildcard_idx + 1],
-                        &pattern_mask_[this->first_nonwildcard_idx + 1],
-                        dist_pattern_first_last_nonwildcard - 1
-                    )
-                ) {
-                    if(match != nullptr) {
-                        return nullptr;
-                    }
-                    match = match_start;
-                }
-
-                // clear rightmost set
-                equality_bytewise &= equality_bytewise - 1;
+        // Stage 2 optimizations involve a time tradeoff between rejecting short patterns vs. matching long patterns.
+        // These specializations attempt to reduce overhead from redundant pattern length checks in the hot loop.
+        #ifdef USE_AVX2_INTRINSICS_STAGE2
+        const bool stage2_has_avx2 = x86_has_avx2();
+        #else
+        const bool stage2_has_avx2 = false;
+        #endif
+        #ifdef USE_SSE2_INTRINSICS_STAGE2
+        const bool stage2_has_sse2 = x86_has_sse2();
+        #else
+        const bool stage2_has_sse2 = false;
+        #endif
+        stage2_compare_fp_t *stage2_compare_fp;
+        // These checks are written in this form to reflect the arithmetic used for stage 2 dispatch
+        // (if(dist_pattern_first_last_nonwildcard <= 1 || (*stage2_compare_fp)(... dist_pattern_first_last_nonwildcard - 1)))
+        if(dist_pattern_first_last_nonwildcard > 1 && dist_pattern_first_last_nonwildcard - 1 >= 32) {
+            if(stage2_has_avx2) {
+                stage2_compare_fp = &stage2_compare<true, true>;
+            } else if(stage2_has_sse2) {
+                stage2_compare_fp = &stage2_compare<true, false>;
+            } else {
+                stage2_compare_fp = &stage2_compare<false, false>;
             }
+        } else if(dist_pattern_first_last_nonwildcard > 1 && dist_pattern_first_last_nonwildcard - 1 >= 16) {
+            if(stage2_has_sse2) {
+                stage2_compare_fp = &stage2_compare<true, false>;
+            } else {
+                stage2_compare_fp = &stage2_compare<false, false>;
+            }
+        } else {
+            stage2_compare_fp = &stage2_compare<false, false>;
+        }
 
-            offset += 16;
+        // ref: http://0x80.pl/notesen/2016-11-28-simd-strfind.html#generic-sse-avx2
+        #ifdef USE_AVX2_INTRINSICS_STAGE1
+        if(x86_has_avx2()) {
+            if(!this->stage1_compare_avx2_loop(
+                seq_start,
+                &match,
+                &offset,
+                limit,
+                dist_pattern_first_last_nonwildcard,
+                pattern_, pattern_mask_,
+                stage2_compare_fp
+            )) {
+                return nullptr;
+            }
+        }
+        #endif
+
+        #ifdef USE_SSE2_INTRINSICS_STAGE1
+        if(x86_has_sse2()) {
+            if(!stage1_compare_sse2_loop(
+                seq_start,
+                &match,
+                &offset,
+                limit,
+                dist_pattern_first_last_nonwildcard,
+                pattern_, pattern_mask_,
+                stage2_compare_fp
+            )) {
+                return nullptr;
+            }
         }
         #endif
 
@@ -131,7 +170,7 @@ public:
 
                 if(
                     dist_pattern_first_last_nonwildcard <= 1 ||
-                    stage2_compare(
+                    (*stage2_compare_fp)(
                         addr + 1,
                         &pattern_[this->first_nonwildcard_idx + 1],
                         &pattern_mask_[this->first_nonwildcard_idx + 1],
@@ -209,18 +248,181 @@ protected:
     }
 
 private:
-    static bool stage2_compare(const uint8_t *ptr_0, const uint8_t *ptr_1, const uint8_t *ptr_mask, size_t size_bytes) {
-        size_t offset = 0;
+    #if defined(USE_SSE2_INTRINSICS_STAGE1) || defined(USE_AVX2_INTRINSICS_STAGE1)
+    static MUST_INLINE uint32_t bsf(uint32_t mask) {
+        uint32_t bitpos;
+        #ifdef _MSC_VER
+        static_assert(sizeof(uint32_t) == sizeof(unsigned long));
+        _BitScanForward(reinterpret_cast<unsigned long *>(&bitpos), mask);
+        #else
+        bitpos = __builtin_ctz(mask);
+        #endif
+        return bitpos;
+    }
 
-        // Appears to give a slight speedup in a semi-practical test when a a real program is scanned,
-        // (repeatedly scanning a signature set in a tight loop to average out transient effects).
-        #ifdef USE_SSE2_INTRINSICS_STAGE2
-        const __m128i vec_zero = _mm_setzero_si128();
-        while(offset + 16 <= size_bytes) {
-            const __m128i vec_0 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(ptr_0 + offset));
-            const __m128i vec_1 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(ptr_1 + offset));
+    MUST_INLINE bool stage1_compare_bsf_inner_loop(
+        uint8_t **p_match,
+        size_t dist_pattern_first_last_nonwildcard,
+        std::span<const uint8_t> pattern_,
+        std::span<const uint8_t> pattern_mask_,
+        stage2_compare_fp_t *stage2_compare_fp,
+        uint8_t *addr,
+        uint32_t equality_bytewise
+    ) const {
+        while(equality_bytewise != 0) {
+            // get rightmost set index (lower indices first)
+            uint32_t bitpos = bsf(equality_bytewise);
+
+            uint8_t *match_start = addr + bitpos - this->first_nonwildcard_idx;
+
+            if(
+                dist_pattern_first_last_nonwildcard <= 1 ||
+                (*stage2_compare_fp)(
+                    addr + bitpos + 1,
+                    &pattern_[this->first_nonwildcard_idx + 1],
+                    &pattern_mask_[this->first_nonwildcard_idx + 1],
+                    dist_pattern_first_last_nonwildcard - 1
+                )
+            ) {
+                if(*p_match != nullptr) {
+                    return false;
+                }
+                *p_match = match_start;
+            }
+
+            // clear rightmost set
+            equality_bytewise &= equality_bytewise - 1;
+        }
+        return true;
+    }
+    #endif
+
+    #ifdef USE_AVX2_INTRINSICS_STAGE1
+    TARGET("avx2") bool stage1_compare_avx2_loop(
+        uint8_t *seq_start,
+        uint8_t **p_match,
+        size_t *p_offset,
+        size_t limit,
+        size_t dist_pattern_first_last_nonwildcard,
+        std::span<const uint8_t> pattern_,
+        std::span<const uint8_t> pattern_mask_,
+        stage2_compare_fp_t *stage2_compare_fp
+    ) const {
+        const __m256i vec_first_byte = _mm256_set1_epi8(pattern_[this->first_nonwildcard_idx]);
+        const __m256i vec_last_byte = _mm256_set1_epi8(pattern_[this->last_nonwildcard_idx]);
+        const __m256i vec_first_byte_mask = _mm256_set1_epi8(pattern_mask_[this->first_nonwildcard_idx]);
+        const __m256i vec_last_byte_mask = _mm256_set1_epi8(pattern_mask_[this->last_nonwildcard_idx]);
+        while(*p_offset + 32 <= limit) {
+            uint8_t *addr = seq_start + *p_offset;
+            const __m256i vec_first_block = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(addr));
+            const __m256i vec_last_block = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(addr + dist_pattern_first_last_nonwildcard));
+
+            const __m256i vec_eq_first_byte = _mm256_cmpeq_epi8(vec_first_byte, _mm256_and_si256(vec_first_byte_mask, vec_first_block));
+            const __m256i vec_eq_last_byte = _mm256_cmpeq_epi8(vec_last_byte, _mm256_and_si256(vec_last_byte_mask, vec_last_block));
+
+            const __m256i vec_eq_both_bytes = _mm256_and_si256(vec_eq_first_byte, vec_eq_last_byte);
+            uint32_t equality_bytewise = _mm256_movemask_epi8(vec_eq_both_bytes);
+
+            if(!this->stage1_compare_bsf_inner_loop(
+                p_match,
+                dist_pattern_first_last_nonwildcard,
+                pattern_, pattern_mask_,
+                stage2_compare_fp,
+                addr,
+                equality_bytewise
+            )) {
+                return false;
+            }
+
+            *p_offset += 32;
+        }
+        return true;
+    }
+    #endif
+
+    #ifdef USE_SSE2_INTRINSICS_STAGE1
+    TARGET("sse2") bool stage1_compare_sse2_loop(
+        uint8_t *seq_start,
+        uint8_t **p_match,
+        size_t *p_offset,
+        size_t limit,
+        size_t dist_pattern_first_last_nonwildcard,
+        std::span<const uint8_t> pattern_,
+        std::span<const uint8_t> pattern_mask_,
+        stage2_compare_fp_t *stage2_compare_fp
+    ) const {
+        const __m128i vec_first_byte = _mm_set1_epi8(pattern_[this->first_nonwildcard_idx]);
+        const __m128i vec_last_byte = _mm_set1_epi8(pattern_[this->last_nonwildcard_idx]);
+        const __m128i vec_first_byte_mask = _mm_set1_epi8(pattern_mask_[this->first_nonwildcard_idx]);
+        const __m128i vec_last_byte_mask = _mm_set1_epi8(pattern_mask_[this->last_nonwildcard_idx]);
+        while(*p_offset + 16 <= limit) {
+            uint8_t *addr = seq_start + *p_offset;
+            const __m128i vec_first_block = _mm_loadu_si128(reinterpret_cast<const __m128i *>(addr));
+            const __m128i vec_last_block = _mm_loadu_si128(reinterpret_cast<const __m128i *>(addr + dist_pattern_first_last_nonwildcard));
+
+            const __m128i vec_eq_first_byte = _mm_cmpeq_epi8(vec_first_byte, _mm_and_si128(vec_first_byte_mask, vec_first_block));
+            const __m128i vec_eq_last_byte = _mm_cmpeq_epi8(vec_last_byte, _mm_and_si128(vec_last_byte_mask, vec_last_block));
+
+            const __m128i vec_eq_both_bytes = _mm_and_si128(vec_eq_first_byte, vec_eq_last_byte);
+
+            uint32_t equality_bytewise = _mm_movemask_epi8(vec_eq_both_bytes);
+
+            if(!this->stage1_compare_bsf_inner_loop(
+                p_match,
+                dist_pattern_first_last_nonwildcard,
+                pattern_, pattern_mask_,
+                stage2_compare_fp,
+                addr,
+                equality_bytewise
+            )) {
+                return false;
+            }
+
+            *p_offset += 16;
+        }
+        return true;
+    }
+    #endif
+
+    #ifdef USE_AVX2_INTRINSICS_STAGE2
+    TARGET("avx2") static bool stage2_compare_avx2_loop(size_t *p_offset, const uint8_t *ptr_0, const uint8_t *ptr_1, const uint8_t *ptr_mask, size_t size_bytes) {
+        const __m256i vec_zero = _mm256_setzero_si256();
+        while(*p_offset + 32 <= size_bytes) {
+            const __m256i vec_0 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(ptr_0 + *p_offset));
+            const __m256i vec_1 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(ptr_1 + *p_offset));
             // bitwise difference acceptance mask
-            const __m128i vec_mask = _mm_loadu_si128(reinterpret_cast<const __m128i *>(ptr_mask + offset));
+            const __m256i vec_mask = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(ptr_mask + *p_offset));
+
+            // bitwise difference vector
+            const __m256i vec_difference = _mm256_xor_si256(vec_0, vec_1);
+
+            // If bit i has different values and the mask bit is set, then there is a miscompare.
+            // miscompares[bit_i] = vec_mask[bit_i] && vec_difference[bit_i]
+            const __m256i vec_miscompares_bitwise = _mm256_and_si256(vec_mask, vec_difference);
+
+            // bytewise equality vector
+            const __m256i vec_equality_bytewise = _mm256_cmpeq_epi8(vec_miscompares_bitwise, vec_zero);
+
+            uint32_t equality_bytewise = _mm256_movemask_epi8(vec_equality_bytewise);
+
+            if(equality_bytewise != 0xFFFFFFFF) {
+                return false;
+            }
+
+            *p_offset += 32;
+        }
+        return true;
+    }
+    #endif
+
+    #ifdef USE_SSE2_INTRINSICS_STAGE2
+    TARGET("sse2") static bool stage2_compare_sse2_loop(size_t *p_offset, const uint8_t *ptr_0, const uint8_t *ptr_1, const uint8_t *ptr_mask, size_t size_bytes) {
+        const __m128i vec_zero = _mm_setzero_si128();
+        while(*p_offset + 16 <= size_bytes) {
+            const __m128i vec_0 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(ptr_0 + *p_offset));
+            const __m128i vec_1 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(ptr_1 + *p_offset));
+            // bitwise difference acceptance mask
+            const __m128i vec_mask = _mm_loadu_si128(reinterpret_cast<const __m128i *>(ptr_mask + *p_offset));
 
             // bitwise difference vector
             const __m128i vec_difference = _mm_xor_si128(vec_0, vec_1);
@@ -238,7 +440,29 @@ private:
                 return false;
             }
 
-            offset += 16;
+            *p_offset += 16;
+        }
+        return true;
+    }
+    #endif
+
+    template<bool USESSE2, bool USEAVX2>
+    static bool stage2_compare(const uint8_t *ptr_0, const uint8_t *ptr_1, const uint8_t *ptr_mask, size_t size_bytes) {
+        size_t offset = 0;
+
+        #ifdef USE_AVX2_INTRINSICS_STAGE2
+        if constexpr(USEAVX2) {
+            if(!stage2_compare_avx2_loop(&offset, ptr_0, ptr_1, ptr_mask, size_bytes)) {
+                return false;
+            }
+        }
+        #endif
+
+        #ifdef USE_SSE2_INTRINSICS_STAGE2
+        if constexpr(USESSE2) {
+            if(!stage2_compare_sse2_loop(&offset, ptr_0, ptr_1, ptr_mask, size_bytes)) {
+                return false;
+            }
         }
         #endif
 
@@ -441,4 +665,8 @@ public:
 };
 
 #undef USE_SSE2_INTRINSICS_STAGE1
+#undef USE_AVX2_INTRINSICS_STAGE1
 #undef USE_SSE2_INTRINSICS_STAGE2
+#undef USE_AVX2_INTRINSICS_STAGE2
+#undef MUST_INLINE
+#undef TARGET
