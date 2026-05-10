@@ -71,9 +71,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
     // Verify the results of VectorPatternDescriptor::find_unique_match_or_none against a simple implementation
     uint8_t *our_result = our_find_unique_match_or_none(pd, (uint8_t *)sequence_bytes, sequence_bytes_size);
     if(their_result != our_result) {
-        std::cout << std::format("find_unique_match_or_none mismatch detected");
-        std::cout << std::format("Their (unit) ptr: {:p}", (void *)their_result);
-        std::cout << std::format("Our (test) ptr: {:p}", (void *)our_result);
+        std::cout << std::format("find_unique_match_or_none mismatch detected\n");
+        std::cout << std::format("Their (unit) ptr: {:p}\n", (void *)their_result);
+        std::cout << std::format("Our (test) ptr: {:p}\n", (void *)our_result);
         abort();
     }
 

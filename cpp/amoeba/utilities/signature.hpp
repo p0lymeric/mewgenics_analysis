@@ -11,6 +11,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <concepts>
 #include <span>
 #include <stdexcept>
 #include <string_view>
@@ -42,6 +43,7 @@
     #define MUST_INLINE inline __attribute__((always_inline))
 #endif
 #if defined(__GNUC__) || defined(__clang__)
+    // ClangCL also needs this decoration
     #define TARGET(tgt) __attribute__((target(tgt)))
 #else
     #define TARGET(tgt)
@@ -59,23 +61,38 @@ public:
     using stage2_compare_fp_t = bool(const uint8_t *ptr_0, const uint8_t *ptr_1, const uint8_t *ptr_mask, size_t size_bytes);
 
     uint8_t *find_unique_match_or_none(uint8_t *seq_start, size_t seq_size_bytes) const {
-        std::span<const uint8_t> pattern_ = this->pattern();
-        std::span<const uint8_t> pattern_mask_ = this->pattern_mask();
-        size_t pattern_size_bytes = pattern_.size_bytes();
+        uint8_t *match = nullptr;
+        find_callback(seq_start, seq_size_bytes, [&](uint8_t *result) -> bool {
+            if(match == nullptr) {
+                match = result;
+                return true;
+            } else {
+                // invalidate the last finding as it wasn't a unique match
+                match = nullptr;
+                return false;
+            }
+        });
+        return match;
+    }
+
+    template<std::predicate<uint8_t *> CB>
+    void find_callback(uint8_t *seq_start, size_t seq_size_bytes, CB &&callback) const {
+        size_t pattern_size_bytes = this->pattern().size_bytes();
 
         // Trivial cases
         if(pattern_size_bytes > seq_size_bytes) {
             // a pattern will never match a sequence of shorter length
-            return nullptr;
+            return;
         }
         if(this->trivial_pattern) {
             if(pattern_size_bytes < seq_size_bytes) {
                 // an all-wildcard or empty pattern trivially matches a sequence of longer length at more than one point
-                return nullptr;
+                return;
             } else /*if(pattern_size_bytes == seq_size_bytes)*/ {
                 // an all-wildcard pattern trivially matches a sequence of equivalent length at exactly one point
                 // 'the' empty pattern uniquely matches 'the' empty sequence
-                return seq_start;
+                callback(seq_start);
+                return;
             }
         }
 
@@ -83,19 +100,81 @@ public:
         // - 1 <= pattern.pattern.size_bytes() <= size_bytes
         // - the pattern is not all wildcards
 
-        // The search marches along the sequence at two points, testing the first and last non-wildcard bytes,
-        // and cascades into a full comparison whenever both match.
-
-        uint8_t *match = nullptr;
-
-        // now we readjust start to base indices on first_nonwildcard_idx
-        size_t offset = this->first_nonwildcard_idx;
-        // and end to avoid overrunning buffers beyond pattern.pattern.size_bytes()
-        size_t limit = offset + seq_size_bytes - pattern_size_bytes + 1;
         size_t dist_pattern_first_last_nonwildcard = this->last_nonwildcard_idx - this->first_nonwildcard_idx;
 
-        // Stage 2 optimizations involve a time tradeoff between rejecting short patterns vs. matching long patterns.
-        // These specializations attempt to reduce overhead from redundant pattern length checks in the hot loop.
+        // The core search algorithm marches along the sequence,
+        // testing the first and last non-wildcard bytes (Stage 1),
+        // and cascades into a full string comparison whenever both match (Stage 2).
+
+        // We specialize Stage 2 to reduce overhead from redundant pattern length checks in the hot loop.
+        // To allow the C++ compiler to generate static code paths, we template both Stage 1 and Stage 2.
+        auto stage1_compare = [&]<bool S2SSE2, bool S2AVX2>() {
+            std::span<const uint8_t> pattern_ = this->pattern();
+            std::span<const uint8_t> pattern_mask_ = this->pattern_mask();
+
+            // adjust start to base indices on first_nonwildcard_idx
+            size_t offset = this->first_nonwildcard_idx;
+            // and end to avoid overrunning buffers beyond pattern.pattern.size_bytes()
+            size_t limit = offset + seq_size_bytes - pattern_size_bytes + 1;
+
+            // ref: http://0x80.pl/notesen/2016-11-28-simd-strfind.html#generic-sse-avx2
+            #ifdef USE_AVX2_INTRINSICS_STAGE1
+            if(x86_has_avx2()) {
+                if(!this->stage1_compare_avx2_loop<S2SSE2, S2AVX2>(
+                    seq_start,
+                    callback,
+                    &offset,
+                    limit,
+                    dist_pattern_first_last_nonwildcard,
+                    pattern_, pattern_mask_
+                )) {
+                    return;
+                }
+            }
+            #endif
+
+            #ifdef USE_SSE2_INTRINSICS_STAGE1
+            if(x86_has_sse2()) {
+                if(!stage1_compare_sse2_loop<S2SSE2, S2AVX2>(
+                    seq_start,
+                    callback,
+                    &offset,
+                    limit,
+                    dist_pattern_first_last_nonwildcard,
+                    pattern_, pattern_mask_
+                )) {
+                    return;
+                }
+            }
+            #endif
+
+            while(offset < limit) {
+                uint8_t *addr = seq_start + offset;
+                bool first_byte_matches = (addr[0] & pattern_mask_[this->first_nonwildcard_idx]) == pattern_[this->first_nonwildcard_idx];
+                bool last_byte_matches = (addr[dist_pattern_first_last_nonwildcard] & pattern_mask_[this->last_nonwildcard_idx]) == pattern_[this->last_nonwildcard_idx];
+
+                if(first_byte_matches && last_byte_matches) {
+                    uint8_t *match_start = addr - this->first_nonwildcard_idx;
+
+                    if(
+                        dist_pattern_first_last_nonwildcard <= 1 ||
+                        stage2_compare<S2SSE2, S2AVX2>(
+                            addr + 1,
+                            &pattern_[this->first_nonwildcard_idx + 1],
+                            &pattern_mask_[this->first_nonwildcard_idx + 1],
+                            dist_pattern_first_last_nonwildcard - 1
+                        )
+                    ) {
+                        if(!callback(match_start)) {
+                            return;
+                        }
+                    }
+                }
+                offset++;
+            }
+        };
+
+        // Then we invoke one of the templated lambdas with selected Stage 2 parameters.
         #ifdef USE_AVX2_INTRINSICS_STAGE2
         const bool stage2_has_avx2 = x86_has_avx2();
         #else
@@ -106,87 +185,25 @@ public:
         #else
         const bool stage2_has_sse2 = false;
         #endif
-        stage2_compare_fp_t *stage2_compare_fp;
-        // These checks are written in this form to reflect the arithmetic used for stage 2 dispatch
-        // (if(dist_pattern_first_last_nonwildcard <= 1 || (*stage2_compare_fp)(... dist_pattern_first_last_nonwildcard - 1)))
+        // These checks are written in this form to reflect the arithmetic used for Stage 2 dispatch
+        // (if(dist_pattern_first_last_nonwildcard <= 1 || stage2_compare<...>(... dist_pattern_first_last_nonwildcard - 1)))
         if(dist_pattern_first_last_nonwildcard > 1 && dist_pattern_first_last_nonwildcard - 1 >= 32) {
             if(stage2_has_avx2) {
-                stage2_compare_fp = &stage2_compare<true, true>;
+                stage1_compare.template operator()<true, true>();
             } else if(stage2_has_sse2) {
-                stage2_compare_fp = &stage2_compare<true, false>;
+                stage1_compare.template operator()<true, false>();
             } else {
-                stage2_compare_fp = &stage2_compare<false, false>;
+                stage1_compare.template operator()<false, false>();
             }
         } else if(dist_pattern_first_last_nonwildcard > 1 && dist_pattern_first_last_nonwildcard - 1 >= 16) {
             if(stage2_has_sse2) {
-                stage2_compare_fp = &stage2_compare<true, false>;
+                stage1_compare.template operator()<true, false>();
             } else {
-                stage2_compare_fp = &stage2_compare<false, false>;
+                stage1_compare.template operator()<false, false>();
             }
         } else {
-            stage2_compare_fp = &stage2_compare<false, false>;
+            stage1_compare.template operator()<false, false>();
         }
-
-        // ref: http://0x80.pl/notesen/2016-11-28-simd-strfind.html#generic-sse-avx2
-        #ifdef USE_AVX2_INTRINSICS_STAGE1
-        if(x86_has_avx2()) {
-            if(!this->stage1_compare_avx2_loop(
-                seq_start,
-                &match,
-                &offset,
-                limit,
-                dist_pattern_first_last_nonwildcard,
-                pattern_, pattern_mask_,
-                stage2_compare_fp
-            )) {
-                return nullptr;
-            }
-        }
-        #endif
-
-        #ifdef USE_SSE2_INTRINSICS_STAGE1
-        if(x86_has_sse2()) {
-            if(!stage1_compare_sse2_loop(
-                seq_start,
-                &match,
-                &offset,
-                limit,
-                dist_pattern_first_last_nonwildcard,
-                pattern_, pattern_mask_,
-                stage2_compare_fp
-            )) {
-                return nullptr;
-            }
-        }
-        #endif
-
-        while(offset < limit) {
-            uint8_t *addr = seq_start + offset;
-            bool first_byte_matches = (addr[0] & pattern_mask_[this->first_nonwildcard_idx]) == pattern_[this->first_nonwildcard_idx];
-            bool last_byte_matches = (addr[dist_pattern_first_last_nonwildcard] & pattern_mask_[this->last_nonwildcard_idx]) == pattern_[this->last_nonwildcard_idx];
-
-            if(first_byte_matches && last_byte_matches) {
-                uint8_t *match_start = addr - this->first_nonwildcard_idx;
-
-                if(
-                    dist_pattern_first_last_nonwildcard <= 1 ||
-                    (*stage2_compare_fp)(
-                        addr + 1,
-                        &pattern_[this->first_nonwildcard_idx + 1],
-                        &pattern_mask_[this->first_nonwildcard_idx + 1],
-                        dist_pattern_first_last_nonwildcard - 1
-                    )
-                ) {
-                    if(match != nullptr) {
-                        return nullptr;
-                    }
-                    match = match_start;
-                }
-            }
-            offset++;
-        }
-
-        return match;
     }
 
 protected:
@@ -260,12 +277,12 @@ private:
         return bitpos;
     }
 
+    template<bool S2SSE2, bool S2AVX2, std::predicate<uint8_t *> CB>
     MUST_INLINE bool stage1_compare_bsf_inner_loop(
-        uint8_t **p_match,
+        CB &&callback,
         size_t dist_pattern_first_last_nonwildcard,
         std::span<const uint8_t> pattern_,
         std::span<const uint8_t> pattern_mask_,
-        stage2_compare_fp_t *stage2_compare_fp,
         uint8_t *addr,
         uint32_t equality_bytewise
     ) const {
@@ -277,17 +294,16 @@ private:
 
             if(
                 dist_pattern_first_last_nonwildcard <= 1 ||
-                (*stage2_compare_fp)(
+                stage2_compare<S2SSE2, S2AVX2>(
                     addr + bitpos + 1,
                     &pattern_[this->first_nonwildcard_idx + 1],
                     &pattern_mask_[this->first_nonwildcard_idx + 1],
                     dist_pattern_first_last_nonwildcard - 1
                 )
             ) {
-                if(*p_match != nullptr) {
+                if(!callback(match_start)) {
                     return false;
                 }
-                *p_match = match_start;
             }
 
             // clear rightmost set
@@ -298,15 +314,15 @@ private:
     #endif
 
     #ifdef USE_AVX2_INTRINSICS_STAGE1
+    template<bool S2SSE2, bool S2AVX2, std::predicate<uint8_t *> CB>
     TARGET("avx2") bool stage1_compare_avx2_loop(
         uint8_t *seq_start,
-        uint8_t **p_match,
+        CB &&callback,
         size_t *p_offset,
         size_t limit,
         size_t dist_pattern_first_last_nonwildcard,
         std::span<const uint8_t> pattern_,
-        std::span<const uint8_t> pattern_mask_,
-        stage2_compare_fp_t *stage2_compare_fp
+        std::span<const uint8_t> pattern_mask_
     ) const {
         const __m256i vec_first_byte = _mm256_set1_epi8(pattern_[this->first_nonwildcard_idx]);
         const __m256i vec_last_byte = _mm256_set1_epi8(pattern_[this->last_nonwildcard_idx]);
@@ -323,11 +339,10 @@ private:
             const __m256i vec_eq_both_bytes = _mm256_and_si256(vec_eq_first_byte, vec_eq_last_byte);
             uint32_t equality_bytewise = _mm256_movemask_epi8(vec_eq_both_bytes);
 
-            if(!this->stage1_compare_bsf_inner_loop(
-                p_match,
+            if(!this->stage1_compare_bsf_inner_loop<S2SSE2, S2AVX2>(
+                callback,
                 dist_pattern_first_last_nonwildcard,
                 pattern_, pattern_mask_,
-                stage2_compare_fp,
                 addr,
                 equality_bytewise
             )) {
@@ -341,15 +356,15 @@ private:
     #endif
 
     #ifdef USE_SSE2_INTRINSICS_STAGE1
+    template<bool S2SSE2, bool S2AVX2, std::predicate<uint8_t *> CB>
     TARGET("sse2") bool stage1_compare_sse2_loop(
         uint8_t *seq_start,
-        uint8_t **p_match,
+        CB &&callback,
         size_t *p_offset,
         size_t limit,
         size_t dist_pattern_first_last_nonwildcard,
         std::span<const uint8_t> pattern_,
-        std::span<const uint8_t> pattern_mask_,
-        stage2_compare_fp_t *stage2_compare_fp
+        std::span<const uint8_t> pattern_mask_
     ) const {
         const __m128i vec_first_byte = _mm_set1_epi8(pattern_[this->first_nonwildcard_idx]);
         const __m128i vec_last_byte = _mm_set1_epi8(pattern_[this->last_nonwildcard_idx]);
@@ -367,11 +382,10 @@ private:
 
             uint32_t equality_bytewise = _mm_movemask_epi8(vec_eq_both_bytes);
 
-            if(!this->stage1_compare_bsf_inner_loop(
-                p_match,
+            if(!this->stage1_compare_bsf_inner_loop<S2SSE2, S2AVX2>(
+                callback,
                 dist_pattern_first_last_nonwildcard,
                 pattern_, pattern_mask_,
-                stage2_compare_fp,
                 addr,
                 equality_bytewise
             )) {
@@ -446,12 +460,14 @@ private:
     }
     #endif
 
-    template<bool USESSE2, bool USEAVX2>
+    template<bool S2SSE2, bool S2AVX2>
     static bool stage2_compare(const uint8_t *ptr_0, const uint8_t *ptr_1, const uint8_t *ptr_mask, size_t size_bytes) {
         size_t offset = 0;
 
+        // Stage 2 optimizations involve a time tradeoff between rejecting short patterns vs. matching long patterns.
+        // Our strategy is to avoid entering SIMD loops if we know that the pattern is too short to fit in a wide register.
         #ifdef USE_AVX2_INTRINSICS_STAGE2
-        if constexpr(USEAVX2) {
+        if constexpr(S2AVX2) {
             if(!stage2_compare_avx2_loop(&offset, ptr_0, ptr_1, ptr_mask, size_bytes)) {
                 return false;
             }
@@ -459,7 +475,7 @@ private:
         #endif
 
         #ifdef USE_SSE2_INTRINSICS_STAGE2
-        if constexpr(USESSE2) {
+        if constexpr(S2SSE2) {
             if(!stage2_compare_sse2_loop(&offset, ptr_0, ptr_1, ptr_mask, size_bytes)) {
                 return false;
             }
