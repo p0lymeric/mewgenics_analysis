@@ -562,9 +562,9 @@ void edit_cat(CatData &cat) {
         }
     }
     ImguiTextStdFmt("Cleared zones: {}", cleared_zones_list);
-    ImGui::InputScalar("unknown_21", ImGuiDataType_U8, &cat.unknown_21);
-    ImGui::InputScalar("num_visited_zones", ImGuiDataType_U8, &cat.num_visited_zones);
-    ImGui::InputScalar("unknown_23", ImGuiDataType_U8, &cat.unknown_23);
+    ImGui::InputScalar("completed_act", ImGuiDataType_U8, &cat.completed_act);
+    ImGui::InputScalar("completed_chapter", ImGuiDataType_U8, &cat.completed_chapter);
+    ImGui::InputScalar("completed_difficulty", ImGuiDataType_U8, &cat.completed_difficulty);
     ImguiTextStdFmt("Injuries");
     if(ImGui::BeginTable("injury_table", 2)) {
         ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthStretch, 1.0f);
@@ -792,9 +792,9 @@ void show_cat(CatData &cat) {
         }
     }
     ImguiTextStdFmt("Cleared zones: {}", cleared_zones_list);
-    ImguiTextStdFmt("unknown 21: {}", cat.unknown_21);
-    ImguiTextStdFmt("Num visited zones: {}", cat.num_visited_zones);
-    ImguiTextStdFmt("unknown 23: {}", cat.unknown_23);
+    ImguiTextStdFmt("Completed act: {}", cat.completed_act);
+    ImguiTextStdFmt("Completed chapter: {}", cat.completed_chapter);
+    ImguiTextStdFmt("Completed difficulty: {}", cat.completed_difficulty);
     ImguiTextStdFmt("Injuries");
     if(ImGui::BeginTable("injury_table", 2)) {
         ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthStretch, 1.0f);

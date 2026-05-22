@@ -346,12 +346,15 @@ ClearedCampaignZonesB1 cleared_zones1 @ $;
 ClearedCampaignZonesB2 cleared_zones2 @ $;
 ClearedCampaignZonesB3To7 cleared_zones37 @ $;
 
-u8 unknown_21 @ $;
+// Completed act/chapter/difficulty (or highest visited if cat died)
+// Checked for Butch's unlocks
+// Completed Act (I, II, III)
+u8 completed_act @ $;
 
-// Number of visited zones in the campaign
-u8 num_visited_zones @ $;
+// Number of visited zones in the campaign (starts at 1)
+u8 completed_chapter @ $;
 
-u8 unknown_23 @ $;
+u8 completed_difficulty @ $;
 
 // Fixed-sized array with indices corresponding to entries in injuries.gon
 struct Injury {

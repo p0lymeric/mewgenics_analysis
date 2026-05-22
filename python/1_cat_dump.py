@@ -52,9 +52,9 @@ def main():
         unknown_17 = v.unknown_17()
         lifestage = v.lifestage()
         cleared_zones = v.cleared_zones()
-        unknown_21 = v.unknown_21()
-        num_visited_zones = v.num_visited_zones()
-        unknown_23 = v.unknown_23()
+        completed_act = v.completed_act()
+        completed_chapter = v.completed_chapter()
+        completed_difficulty = v.completed_difficulty()
         injuries = v.injuries()
 
         print(f'{k:08d} {name}')
@@ -87,9 +87,9 @@ def main():
         print(f'{unknown_17}')
         print(f'{lifestage}')
         print(f'{cleared_zones}')
-        print(f'{unknown_21}')
-        print(f'{num_visited_zones}')
-        print(f'{unknown_23}')
+        print(f'{completed_act}')
+        print(f'{completed_chapter}')
+        print(f'{completed_difficulty}')
         print(f'{injuries}')
 
 if __name__ == '__main__':

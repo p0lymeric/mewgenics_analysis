@@ -58,8 +58,6 @@ public:
     virtual std::span<const uint8_t> pattern() const = 0;
     virtual std::span<const uint8_t> pattern_mask() const = 0;
 
-    using stage2_compare_fp_t = bool(const uint8_t *ptr_0, const uint8_t *ptr_1, const uint8_t *ptr_mask, size_t size_bytes);
-
     uint8_t *find_unique_match_or_none(uint8_t *seq_start, size_t seq_size_bytes) const {
         uint8_t *match = nullptr;
         find_callback(seq_start, seq_size_bytes, [&](uint8_t *result) -> bool {
@@ -77,26 +75,30 @@ public:
 
     template<std::predicate<uint8_t *> CB>
     void find_callback(uint8_t *seq_start, size_t seq_size_bytes, CB &&callback) const {
+        // Trivial cases.
         size_t pattern_size_bytes = this->pattern().size_bytes();
-
-        // Trivial cases
         if(pattern_size_bytes > seq_size_bytes) {
             // a pattern will never match a sequence of shorter length
             return;
         }
+        size_t num_search_positions = seq_size_bytes - pattern_size_bytes + 1;
         if(this->trivial_pattern) {
-            if(pattern_size_bytes < seq_size_bytes) {
-                // an all-wildcard or empty pattern trivially matches a sequence of longer length at more than one point
-                return;
-            } else /*if(pattern_size_bytes == seq_size_bytes)*/ {
-                // an all-wildcard pattern trivially matches a sequence of equivalent length at exactly one point
-                // 'the' empty pattern uniquely matches 'the' empty sequence
-                callback(seq_start);
-                return;
+            // pattern_size_bytes > seq_size_bytes:
+            // - untraversable due to check above
+            // pattern_size_bytes < seq_size_bytes:
+            // - an all-wildcard or empty pattern trivially matches a sequence of longer length at more than one point
+            // pattern_size_bytes == seq_size_bytes:
+            // - an all-wildcard pattern trivially matches a sequence of equivalent length at offset 0
+            // - 'the' empty pattern matches 'the' empty sequence at offset 0
+            for(size_t i = 0; i < num_search_positions; i++) {
+                if(!callback(seq_start + i)) {
+                    return;
+                }
             }
+            return;
         }
 
-        // Now we need to handle non-trivial cases. The following preconditions are assured:
+        // Non-trivial cases. The following preconditions are assured:
         // - 1 <= pattern.pattern.size_bytes() <= size_bytes
         // - the pattern is not all wildcards
 
@@ -109,13 +111,13 @@ public:
         // We specialize Stage 2 to reduce overhead from redundant pattern length checks in the hot loop.
         // To allow the C++ compiler to generate static code paths, we template both Stage 1 and Stage 2.
         auto stage1_compare = [&]<bool S2SSE2, bool S2AVX2>() {
-            std::span<const uint8_t> pattern_ = this->pattern();
-            std::span<const uint8_t> pattern_mask_ = this->pattern_mask();
+            const uint8_t *pattern_ = this->pattern().data();
+            const uint8_t *pattern_mask_ = this->pattern_mask().data();
 
             // adjust start to base indices on first_nonwildcard_idx
             size_t offset = this->first_nonwildcard_idx;
             // and end to avoid overrunning buffers beyond pattern.pattern.size_bytes()
-            size_t limit = offset + seq_size_bytes - pattern_size_bytes + 1;
+            size_t limit = offset + num_search_positions;
 
             // ref: http://0x80.pl/notesen/2016-11-28-simd-strfind.html#generic-sse-avx2
             #ifdef USE_AVX2_INTRINSICS_STAGE1
@@ -154,17 +156,13 @@ public:
                 bool last_byte_matches = (addr[dist_pattern_first_last_nonwildcard] & pattern_mask_[this->last_nonwildcard_idx]) == pattern_[this->last_nonwildcard_idx];
 
                 if(first_byte_matches && last_byte_matches) {
-                    uint8_t *match_start = addr - this->first_nonwildcard_idx;
-
-                    if(
-                        dist_pattern_first_last_nonwildcard <= 1 ||
-                        stage2_compare<S2SSE2, S2AVX2>(
-                            addr + 1,
-                            &pattern_[this->first_nonwildcard_idx + 1],
-                            &pattern_mask_[this->first_nonwildcard_idx + 1],
-                            dist_pattern_first_last_nonwildcard - 1
-                        )
-                    ) {
+                    if(stage2_compare<S2SSE2, S2AVX2>(
+                        addr,
+                        &pattern_[this->first_nonwildcard_idx],
+                        &pattern_mask_[this->first_nonwildcard_idx],
+                        dist_pattern_first_last_nonwildcard + 1
+                    )) {
+                        uint8_t *match_start = addr - this->first_nonwildcard_idx;
                         if(!callback(match_start)) {
                             return;
                         }
@@ -185,9 +183,7 @@ public:
         #else
         const bool stage2_has_sse2 = false;
         #endif
-        // These checks are written in this form to reflect the arithmetic used for Stage 2 dispatch
-        // (if(dist_pattern_first_last_nonwildcard <= 1 || stage2_compare<...>(... dist_pattern_first_last_nonwildcard - 1)))
-        if(dist_pattern_first_last_nonwildcard > 1 && dist_pattern_first_last_nonwildcard - 1 >= 32) {
+        if(dist_pattern_first_last_nonwildcard + 1 >= 32) {
             if(stage2_has_avx2) {
                 stage1_compare.template operator()<true, true>();
             } else if(stage2_has_sse2) {
@@ -195,7 +191,7 @@ public:
             } else {
                 stage1_compare.template operator()<false, false>();
             }
-        } else if(dist_pattern_first_last_nonwildcard > 1 && dist_pattern_first_last_nonwildcard - 1 >= 16) {
+        } else if(dist_pattern_first_last_nonwildcard + 1 >= 16) {
             if(stage2_has_sse2) {
                 stage1_compare.template operator()<true, false>();
             } else {
@@ -281,8 +277,8 @@ private:
     MUST_INLINE bool stage1_compare_bsf_inner_loop(
         CB &&callback,
         size_t dist_pattern_first_last_nonwildcard,
-        std::span<const uint8_t> pattern_,
-        std::span<const uint8_t> pattern_mask_,
+        const uint8_t *pattern_,
+        const uint8_t *pattern_mask_,
         uint8_t *addr,
         uint32_t equality_bytewise
     ) const {
@@ -290,17 +286,13 @@ private:
             // get rightmost set index (lower indices first)
             uint32_t bitpos = bsf(equality_bytewise);
 
-            uint8_t *match_start = addr + bitpos - this->first_nonwildcard_idx;
-
-            if(
-                dist_pattern_first_last_nonwildcard <= 1 ||
-                stage2_compare<S2SSE2, S2AVX2>(
-                    addr + bitpos + 1,
-                    &pattern_[this->first_nonwildcard_idx + 1],
-                    &pattern_mask_[this->first_nonwildcard_idx + 1],
-                    dist_pattern_first_last_nonwildcard - 1
-                )
-            ) {
+            if(stage2_compare<S2SSE2, S2AVX2>(
+                addr + bitpos,
+                &pattern_[this->first_nonwildcard_idx],
+                &pattern_mask_[this->first_nonwildcard_idx],
+                dist_pattern_first_last_nonwildcard + 1
+            )) {
+                uint8_t *match_start = addr + bitpos - this->first_nonwildcard_idx;
                 if(!callback(match_start)) {
                     return false;
                 }
@@ -321,8 +313,8 @@ private:
         size_t *p_offset,
         size_t limit,
         size_t dist_pattern_first_last_nonwildcard,
-        std::span<const uint8_t> pattern_,
-        std::span<const uint8_t> pattern_mask_
+        const uint8_t *pattern_,
+        const uint8_t *pattern_mask_
     ) const {
         const __m256i vec_first_byte = _mm256_set1_epi8(pattern_[this->first_nonwildcard_idx]);
         const __m256i vec_last_byte = _mm256_set1_epi8(pattern_[this->last_nonwildcard_idx]);
@@ -363,8 +355,8 @@ private:
         size_t *p_offset,
         size_t limit,
         size_t dist_pattern_first_last_nonwildcard,
-        std::span<const uint8_t> pattern_,
-        std::span<const uint8_t> pattern_mask_
+        const uint8_t *pattern_,
+        const uint8_t *pattern_mask_
     ) const {
         const __m128i vec_first_byte = _mm_set1_epi8(pattern_[this->first_nonwildcard_idx]);
         const __m128i vec_last_byte = _mm_set1_epi8(pattern_[this->last_nonwildcard_idx]);

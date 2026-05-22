@@ -235,9 +235,9 @@ struct CatData {
     double fertility;
     uint64_t flags;
     uint64_t cleared_zones;
-    uint8_t unknown_21;
-    uint8_t num_visited_zones;
-    uint8_t unknown_23;
+    uint8_t completed_act;
+    uint8_t completed_chapter;
+    uint8_t completed_difficulty;
     char _c0b[5];
     MsvcReleaseModeXString collar;
     uint32_t level;

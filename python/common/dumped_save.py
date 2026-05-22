@@ -312,15 +312,15 @@ class Cat:
         offset = self.unknown_17_offset_past + 4
         return struct.unpack_from(f'<Q', self.blob, offset=offset)[0]
 
-    def unknown_21(self):
+    def completed_act(self):
         offset = self.unknown_17_offset_past + 12
         return struct.unpack_from(f'<B', self.blob, offset=offset)[0]
 
-    def num_visited_zones(self):
+    def completed_chapter(self):
         offset = self.unknown_17_offset_past + 13
         return struct.unpack_from(f'<B', self.blob, offset=offset)[0]
 
-    def unknown_23(self):
+    def completed_difficulty(self):
         offset = self.unknown_17_offset_past + 14
         return struct.unpack_from(f'<B', self.blob, offset=offset)[0]
 
@@ -367,9 +367,9 @@ class Cat:
             'unknown_17': self.unknown_17(),
             'lifestage': self.lifestage(),
             'cleared_zones': self.cleared_zones(),
-            'unknown_21': self.unknown_21(),
-            'num_visited_zones': self.num_visited_zones(),
-            'unknown_23': self.unknown_23(),
+            'completed_act': self.completed_act(),
+            'completed_chapter': self.completed_chapter(),
+            'completed_difficulty': self.completed_difficulty(),
             'injuries': self.injuries(),
         }
 
