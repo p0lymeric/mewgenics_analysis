@@ -1,55 +1,59 @@
-cmake_minimum_required(VERSION 3.15)
-
 project(cosmic_ooze)
 
-# Build target names
-set(INJECTOR_NAME cosmic_ooze)
-
-# Set language mode
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-# possibly does nothing with MSVC; permissive- is set by std:c++20
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-if(MSVC)
-    add_compile_options(/W4)
-elseif(MINGW)
-    add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
-
-# Define build targets
-add_executable(${INJECTOR_NAME} WIN32
+# List build targets
+add_executable(${PROJECT_NAME} WIN32
     cosmic_ooze.cpp
 )
 
-target_include_directories(${INJECTOR_NAME} PUBLIC
+# List dependencies
+target_link_libraries(${PROJECT_NAME} PRIVATE
+    Detours
+)
+
+# List include directories
+target_include_directories(${PROJECT_NAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_compile_definitions(${INJECTOR_NAME} PRIVATE
+# List definitions
+target_compile_definitions(${PROJECT_NAME} PRIVATE
     WIN32_LEAN_AND_MEAN
     NOMINMAX
 )
 
+# Set required flags
 if(MSVC)
 elseif(MINGW)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
         # Statically link libc++ (static-libstdc++ flag also covers libc++)
-        target_link_options(${INJECTOR_NAME} PRIVATE -static-libstdc++)
+        target_link_options(${PROJECT_NAME} PRIVATE -static-libstdc++)
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         # Statically link libgcc/libstdc++/libwinpthread
-        target_link_options(${INJECTOR_NAME} PRIVATE -static-libgcc -static-libstdc++ -static -lwinpthread -dynamic)
+        target_link_options(${PROJECT_NAME} PRIVATE -static-libgcc -static-libstdc++ -static -lwinpthread -dynamic)
     endif()
     # Set -municode so that gcc/clang will use wWinMain as an entry point
-    target_link_options(${INJECTOR_NAME} PRIVATE -municode)
+    target_link_options(${PROJECT_NAME} PRIVATE -municode)
 endif()
 
-target_link_libraries(${INJECTOR_NAME} PRIVATE
-    Detours
+# Set language modes
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+    C_STANDARD 17
+    C_STANDARD_REQUIRED ON
+    C_EXTENSIONS OFF
 )
 
-install(TARGETS ${TARGET_NAME} ${INJECTOR_NAME} RUNTIME DESTINATION bin)
-
+# Set warnings
 if(MSVC)
-    install(FILES $<TARGET_PDB_FILE:${INJECTOR_NAME}> TYPE BIN OPTIONAL)
+    target_compile_options(${PROJECT_NAME} PRIVATE /W4)
+elseif(MINGW)
+    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+# Set install paths
+install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
+if(MSVC)
+    install(FILES $<TARGET_PDB_FILE:${PROJECT_NAME}> DESTINATION bin OPTIONAL)
 endif()

@@ -1,39 +1,37 @@
-cmake_minimum_required(VERSION 3.15)
-
 project(libtomcrypt)
 
-# Set language mode
-set(CMAKE_C_STANDARD 17)
-set(CMAKE_C_STANDARD_REQUIRED ON)
-# possibly does nothing with MSVC
-set(CMAKE_C_EXTENSIONS OFF)
-
+# Set path anchors
 set(LIBTOMCRYPT_DIR ../../libtomcrypt)
 
-if(MSVC)
-    if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        add_compile_options(/W4)
-    else()
-        add_compile_options(/W4)
-    endif()
-elseif(MINGW)
-    add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
-
-# Define build targets
-add_library(libtomcrypt STATIC
+# List build targets
+add_library(${PROJECT_NAME} STATIC
     ${LIBTOMCRYPT_DIR}/src/hashes/sha2/sha256.c
 )
 
-target_include_directories(libtomcrypt PUBLIC
+# List include directories
+target_include_directories(${PROJECT_NAME} PUBLIC
     ${LIBTOMCRYPT_DIR}/src/headers
 )
 
-target_compile_definitions(libtomcrypt PRIVATE
+# List definitions
+target_compile_definitions(${PROJECT_NAME} PRIVATE
     LTC_NO_TEST
     ARGTYPE=4
 )
-
-target_compile_definitions(libtomcrypt PUBLIC
+target_compile_definitions(${PROJECT_NAME} PUBLIC
     LTC_NO_PROTOTYPES
 )
+
+# Set language modes
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    C_STANDARD 17
+    C_STANDARD_REQUIRED ON
+    C_EXTENSIONS OFF
+)
+
+# Set warnings
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /W4)
+elseif(MINGW)
+    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic)
+endif()

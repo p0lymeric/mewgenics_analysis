@@ -37,17 +37,13 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 
 # Set warnings
 if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE
-        /W4
-    )
+    target_compile_options(${PROJECT_NAME} PRIVATE /W4)
 elseif(MINGW)
-    target_compile_options(${PROJECT_NAME} PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
+    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 # Set install paths
-install(TARGETS ${TARGET_NAME} ${PROJECT_NAME} RUNTIME DESTINATION tests)
+install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION tests)
 if(MSVC)
     install(FILES $<TARGET_PDB_FILE:${PROJECT_NAME}> DESTINATION tests OPTIONAL)
 endif()

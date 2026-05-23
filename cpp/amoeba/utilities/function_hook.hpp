@@ -151,7 +151,7 @@ public:
                     }
                 }
                 for(auto hook : registry.hook_descriptors) {
-                    if (!hook->install(host_exec_base_va, api_provider)) {
+                    if (!hook->install(api_provider)) {
                         return false;
                     }
                 }

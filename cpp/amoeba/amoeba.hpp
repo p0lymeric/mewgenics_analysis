@@ -23,10 +23,10 @@ extern GlobalContext G;
 inline constexpr uint64_t TLOG_SCHEMA_VERSION_HINT = 1;
 
 // These addresses were extracted from Mewgenics.exe
-// Mewgenics 1.0.20941 (SHA-256 c10cb2435874db1e291b949eb226e061512e05f2bc235504a6617f525688b26c)
+// Mewgenics 1.1.21039 (SHA-256 c3a41e436a93fa58cd386ec46dad5c2a6f21a583d33c3a57a15a2604c726439e)
 
 // SHA-256 hash of the Mewgenics.exe binary last used to update hardcoded offsets/signatures
-inline constexpr Hash256Bit EXE_SHA256 = c_str_to_hash256bit("c10cb2435874db1e291b949eb226e061512e05f2bc235504a6617f525688b26c");
+inline constexpr Hash256Bit EXE_SHA256 = c_str_to_hash256bit("c3a41e436a93fa58cd386ec46dad5c2a6f21a583d33c3a57a15a2604c726439e");
 
 // The script under misc/find_rvas.py can help with recovering these addresses after a game update
 
@@ -39,7 +39,7 @@ inline constexpr const auto ADDRESS_glaiel__CatData_ctor = DirectSig::make<"48 8
 inline constexpr const auto ADDRESS_glaiel__CatData_dtor = DirectSig::make<"40 53 48 83 EC 20 48 8B D9 48 81 C1 10 0C 00 00 E8 ?? ?? ?? ?? 48 8D 8B 90 0B 00 00 E8 ?? ?? ??">(0);
 inline constexpr const auto ADDRESS_glaiel__CatData_unk_init = DirectSig::make<"48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 D9 48 81 EC B0 00 00 00 45 0F B6 E1">(0);
 inline constexpr const auto ADDRESS_glaiel__CatData_unk_init_bodyparts = DirectSig::make<"40 53 55 56 41 56 41 57 48 83 EC 60 48 8B D9 0F 57 C0 45 33 FF B9 20 00 00 00 0F 11 44 24 40 4C 89 7C 24 50">(0);
-inline constexpr const auto ADDRESS_glaiel__CatData__breed = DirectSig::make<"48 8B C4 55 53 56 57 41 54 41 55 41 56 41 57 48 8D A8 28 FF FF FF 48 81 EC 98 01 00 00 0F 29 70 A8 0F 29 78 98 44 0F 29 40 88 44 0F 29 88 78 FF FF FF 44 0F 29 90 68 FF FF FF 44 0F 29 98 58 FF FF FF 44 0F 29 A0 48 FF FF FF 44 0F 29 A8 38 FF FF FF 44 0F 29 B0 28 FF FF FF 44 0F 29 B8 18 FF FF FF 0F 28 F3">(0);
+inline constexpr const auto ADDRESS_glaiel__CatData__breed = IndirectSig::make<"48 8B CB E8 ?? ?? ?? ?? 48 8B F8 48 8B D6 49 8B CD E8 ?? ?? ?? ?? 48 8B D8 48 8B D5 49 8B CD E8 ?? ?? ?? ?? 4C 89 74 24 20 0F 28 DE 4C 8B C3 48 8B D0 48 8B CF E8 ?? ?? ?? ??">(54, 4, true, true);
 inline constexpr const auto ADDRESS_glaiel__HouseCat__unk_remove_from_world = IndirectSig::make<"48 89 5C 24 08 57 48 83 EC 20 48 8B 05 ?? ?? ?? ?? 48 8B F9 48 8B 98 A8 05 00 00 48 8B 88 98 05 00 00 48 8B 47 08 48 8B 50 48 48 8B 92 80 00 00 00 E8 ?? ?? ?? ?? 41 B9 01 00 00 00 4C 8B C0 BA 07 00 00 00 48 8B CB E8 ?? ?? ?? ?? 48 8B 4F 08 48 8B 49 48 E8 ?? ?? ?? ??">(85, 4, true, true);
 inline constexpr const auto ADDRESS_maybe_create_stray_catdata_and_register_in_pedigree = DirectSig::make<"48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 48 83 EC 30 41 8B F8 48 8B E9 B9 58 0C 00 00 E8">(0);
 inline constexpr const auto ADDRESS_glaiel__Scene__CreateEntity = DirectSig::make<"40 57 48 83 EC 20 80 B9 B0 04 00 00 00 48 8B F9 74 ?? 33 C0 48 83 C4 20 5F C3 B9 40 00 00 00 48 89 5C 24 38">(0);
@@ -60,7 +60,14 @@ inline constexpr const auto DATAOFF_maybe_housecat_component_pool = IndirectSig:
 inline constexpr const auto DATAOFF_glaiel__Component___objid_counter = IndirectSig::make<"8B 15 ?? ?? ?? ?? 45 33 C0 80 61 0D 80 89 51 08 C6 41 0C 00 8D 42 01 C7 41 0E 00 00 01 00 89 05">(2, 4, true, true);
 
 // TLS variable offsets
-inline constexpr const auto TLS0OFF_xoshiro256p_rng_context = IndirectSig::make<"48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 D9 48 81 EC B0 00 00 00 45 0F B6 E1 45 8B F0 48 8B F9 41 BD ?? ?? ?? ??">(40, 4, false, false);
+inline constexpr const auto TLS0OFF_xoshiro256p_rng_context = IndirectSig::make<"48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 D9 48 81 EC B0 00 00 00 45 0F B6 E1 41 8B F0 48 8B F9 45 33 ED 41 BE ?? ?? ?? ??">(43, 4, false, false);
+
+// inline const auto TLS0OFF_xoshiro256p_rng_context = FirstMatchSig::make(
+//     // Mewgenics 1.1.x
+//     IndirectSig::make<"48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 D9 48 81 EC B0 00 00 00 45 0F B6 E1 41 8B F0 48 8B F9 45 33 ED 41 BE ?? ?? ?? ??">(43, 4, false, false),
+//     // Mewgenics 1.0.x
+//     IndirectSig::make<"48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 D9 48 81 EC B0 00 00 00 45 0F B6 E1 45 8B F0 48 8B F9 41 BD ?? ?? ?? ??">(40, 4, false, false)
+// );
 
 // Call to deinitialize imgui
 // Exporter: amoeba_imgui.cpp

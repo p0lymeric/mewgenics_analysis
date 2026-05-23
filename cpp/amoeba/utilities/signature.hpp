@@ -12,9 +12,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <concepts>
+#include <memory>
 #include <span>
 #include <stdexcept>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 // Signature descriptors and memory pattern scanning.
@@ -55,6 +57,7 @@ public:
     size_t last_nonwildcard_idx;
     bool trivial_pattern; // empty or all wildcards
 
+    virtual ~BPatternDescriptor() = default;
     virtual std::span<const uint8_t> pattern() const = 0;
     virtual std::span<const uint8_t> pattern_mask() const = 0;
 
@@ -552,6 +555,7 @@ public:
 
 class ISigDescriptor {
 public:
+    virtual ~ISigDescriptor() = default;
     virtual uint8_t *find_unique_match_or_none(uint8_t *seq_start, size_t seq_size_bytes) const = 0;
 };
 
@@ -671,6 +675,38 @@ public:
         return BIndirectSig(pd, offset, length, signed_, rip_relative);
     }
 };
+
+// TODO not happy with this class (shared_ptr use, no consteval make variant)
+// FIXME behaves differently when compiled with MinGW-Clang64 than other compilers (UB)
+// struct FirstMatchSig : ISigDescriptor {
+//     std::vector<std::shared_ptr<ISigDescriptor>> sigs_;
+
+//     template<typename... Sigs>
+//     FirstMatchSig(Sigs &&...sigs) {
+//         // this is very, uhm, C++
+//         (this->sigs_.emplace_back(std::make_shared<std::decay_t<Sigs>>(std::forward<Sigs>(sigs))), ...);
+//     }
+
+//     template<typename... Sigs>
+//     static FirstMatchSig make(Sigs &&...sigs) {
+//         return FirstMatchSig(std::forward<Sigs>(sigs)...);
+//     }
+
+//     template<typename S>
+//     void add(S &&sig) {
+//         this->sigs_.emplace_back(std::make_shared<std::decay_t<S>>(std::forward<S>(sig)));
+//     }
+
+//     uint8_t *find_unique_match_or_none(uint8_t *seq_start, size_t seq_size_bytes) const override {
+//         for(auto &sig : this->sigs_) {
+//             uint8_t *addr = sig->find_unique_match_or_none(seq_start, seq_size_bytes);
+//             if(addr != nullptr) {
+//                 return addr;
+//             }
+//         }
+//         return nullptr;
+//     }
+// };
 
 #undef USE_SSE2_INTRINSICS_STAGE1
 #undef USE_AVX2_INTRINSICS_STAGE1

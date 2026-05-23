@@ -28,7 +28,10 @@ signatures = {
     'ADDRESS_glaiel__CatData_dtor': DirectSig('40 53 48 83 EC 20 48 8B D9 48 81 C1 10 0C 00 00 E8 ?? ?? ?? ?? 48 8D 8B 90 0B 00 00 E8 ?? ?? ??', 0),
     'ADDRESS_glaiel__CatData_unk_init': DirectSig('48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 D9 48 81 EC B0 00 00 00 45 0F B6 E1', 0),
     'ADDRESS_glaiel__CatData_unk_init_bodyparts': DirectSig('40 53 55 56 41 56 41 57 48 83 EC 60 48 8B D9 0F 57 C0 45 33 FF B9 20 00 00 00 0F 11 44 24 40 4C 89 7C 24 50', 0),
-    'ADDRESS_glaiel__CatData__breed': DirectSig('48 8B C4 55 53 56 57 41 54 41 55 41 56 41 57 48 8D A8 28 FF FF FF 48 81 EC 98 01 00 00 0F 29 70 A8 0F 29 78 98 44 0F 29 40 88 44 0F 29 88 78 FF FF FF 44 0F 29 90 68 FF FF FF 44 0F 29 98 58 FF FF FF 44 0F 29 A0 48 FF FF FF 44 0F 29 A8 38 FF FF FF 44 0F 29 B0 28 FF FF FF 44 0F 29 B8 18 FF FF FF 0F 28 F3', 0),
+    'ADDRESS_glaiel__CatData__breed': IndirectSig(
+        '48 8B CB E8 ?? ?? ?? ?? 48 8B F8 48 8B D6 49 8B CD E8 ?? ?? ?? ?? 48 8B D8 48 8B D5 49 8B CD E8 ?? ?? ?? ?? 4C 89 74 24 20 0F 28 DE 4C 8B C3 48 8B D0 48 8B CF E8 ?? ?? ?? ??',
+        54, 4, True, True
+    ),
     'ADDRESS_glaiel__HouseCat__unk_remove_from_world': IndirectSig(
         '48 89 5C 24 08 57 48 83 EC 20 48 8B 05 ?? ?? ?? ?? 48 8B F9 48 8B 98 A8 05 00 00 48 8B 88 98 05 00 00 48 8B 47 08 48 8B 50 48 48 8B 92 80 00 00 00 E8 ?? ?? ?? ?? 41 B9 01 00 00 00 4C 8B C0 BA 07 00 00 00 48 8B CB E8 ?? ?? ?? ?? 48 8B 4F 08 48 8B 49 48 E8 ?? ?? ?? ??',
         85, 4, True, True
@@ -62,9 +65,13 @@ signatures = {
         '8B 15 ?? ?? ?? ?? 45 33 C0 80 61 0D 80 89 51 08 C6 41 0C 00 8D 42 01 C7 41 0E 00 00 01 00 89 05',
         2, 4, True, True
     ),
-    'TLS0OFF_xoshiro256p_rng_context': IndirectSig(
+    'TLS0OFF_xoshiro256p_rng_context_1p0': IndirectSig(
         '48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 D9 48 81 EC B0 00 00 00 45 0F B6 E1 45 8B F0 48 8B F9 41 BD ?? ?? ?? ??',
         40, 4, False, False
+    ),
+    'TLS0OFF_xoshiro256p_rng_context_1p1': IndirectSig(
+        '48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 D9 48 81 EC B0 00 00 00 45 0F B6 E1 41 8B F0 48 8B F9 45 33 ED 41 BE ?? ?? ?? ??',
+        43, 4, False, False
     ),
 }
 
@@ -94,7 +101,7 @@ def main():
             result_buffer = results[0].group(0)
             if type(search_descriptor) is DirectSig:
                 target_rva = result_cva + search_descriptor.offset
-                print(f'inline constexpr uintptr_t {search_varname} = {hex(target_rva)}; // {search_descriptor}')
+                # print(f'inline constexpr uintptr_t {search_varname} = {hex(target_rva)}; // {search_descriptor}')
             else:
                 if search_descriptor.offset + search_descriptor.length > len(result_buffer):
                     print(f'// WARNING: indexed past match buffer')
@@ -102,7 +109,7 @@ def main():
                 target = int.from_bytes(target_bytes, byteorder='little', signed=search_descriptor.signed)
                 if search_descriptor.rip_relative:
                     target += result_cva + search_descriptor.offset + search_descriptor.length
-                print(f'inline constexpr uintptr_t {search_varname} = {hex(target)}; // {search_descriptor}')
+                # print(f'inline constexpr uintptr_t {search_varname} = {hex(target)}; // {search_descriptor}')
         elif len(results) > 1:
             print(f'inline constexpr uintptr_t {search_varname} = <MULTIPLE MATCHES>; // {search_descriptor}')
         else:

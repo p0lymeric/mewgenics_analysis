@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.15)
 
 project(mewgenics_analysis)
 
+# Set global compile options
+if(MSVC)
+    # append "-- /p:CL_MPcount=<n>" to "cmake --build" to control TU-level parallelism
+    add_compile_options(/MP)
+endif()
+
 # Register our CMake modules
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/cmake/modules")
 
