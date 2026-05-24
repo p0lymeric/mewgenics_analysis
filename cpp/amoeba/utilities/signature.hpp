@@ -6,17 +6,20 @@
 #define USE_SSE2_INTRINSICS_STAGE2
 #define USE_AVX2_INTRINSICS_STAGE2
 
+// #include "utilities/debug_console.hpp"
 #include "utilities/constexpr.hpp"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <concepts>
-#include <memory>
+#include <cstring>
+#include <format>
+// #include <memory>
 #include <span>
 #include <stdexcept>
 #include <string_view>
-#include <type_traits>
+// #include <type_traits>
 #include <vector>
 
 // Signature descriptors and memory pattern scanning.
@@ -62,6 +65,8 @@ public:
     virtual std::span<const uint8_t> pattern_mask() const = 0;
 
     uint8_t *find_unique_match_or_none(uint8_t *seq_start, size_t seq_size_bytes) const {
+        // D::debug("find_unique_match_or_none: seq_start: {:p}, seq_size_bytes: 0x{:x}", reinterpret_cast<void *>(seq_start), seq_size_bytes);
+        // D::debug("    {}", this->to_string());
         uint8_t *match = nullptr;
         find_callback(seq_start, seq_size_bytes, [&](uint8_t *result) -> bool {
             if(match == nullptr) {
@@ -73,6 +78,7 @@ public:
                 return false;
             }
         });
+        // D::debug("    found {:p}", reinterpret_cast<void *>(match));
         return match;
     }
 
@@ -203,6 +209,35 @@ public:
         } else {
             stage1_compare.template operator()<false, false>();
         }
+    }
+
+    std::string to_string() const {
+        std::string builder;
+        builder += "(pattern: ";
+        size_t size = this->pattern().size();
+        for(size_t i = 0; i < size; i++) {
+            uint8_t patt = this->pattern()[i];
+            uint8_t mask = this->pattern_mask()[i];
+            if(mask >> 4 == 0xF) {
+                builder.push_back("0123456789ABCDEF"[patt >> 4]);
+            } else if(mask >> 4 == 0x0) {
+                builder.push_back('?');
+            } else {
+                builder.push_back('/');
+            }
+            if((mask & 0xF) == 0xF) {
+                builder.push_back("0123456789ABCDEF"[patt & 0xF]);
+            } else if((mask & 0xF) == 0x0) {
+                builder.push_back('?');
+            } else {
+                builder.push_back('/');
+            }
+            // if(i < size - 1) {
+            //     builder.push_back(' ');
+            // }
+        }
+        builder += std::format(", size {}, 1nwi: {}, -1nwi: {}, trivial: {})", size, this->first_nonwildcard_idx, this->last_nonwildcard_idx, this->trivial_pattern);
+        return builder;
     }
 
 protected:
@@ -615,36 +650,20 @@ struct BIndirectSig : ISigDescriptor {
             if(this->signed_) {
                 // Read with sign extension
                 switch(this->length) {
-                    case 1:
-                        operand_ext = *reinterpret_cast<int8_t *>(addr + this->offset);
-                        break;
-                    case 2:
-                        operand_ext = *reinterpret_cast<int16_t *>(addr + this->offset);
-                        break;
-                    case 4:
-                        operand_ext = *reinterpret_cast<int32_t *>(addr + this->offset);
-                        break;
-                    case 8:
-                        operand_ext = *reinterpret_cast<int64_t *>(addr + this->offset);
-                        break;
+                    case 1: { int8_t tmp; std::memcpy(&tmp, addr + this->offset, 1); operand_ext = tmp; break; }
+                    case 2: { int16_t tmp; std::memcpy(&tmp, addr + this->offset, 2); operand_ext = tmp; break; }
+                    case 4: { int32_t tmp; std::memcpy(&tmp, addr + this->offset, 4); operand_ext = tmp; break; }
+                    case 8: { std::memcpy(&operand_ext, addr + this->offset, 8); break; }
                     default:
                         return nullptr;
                 }
             } else {
                 // Read as unsigned
                 switch(this->length) {
-                    case 1:
-                        operand_ext = *reinterpret_cast<uint8_t *>(addr + this->offset);
-                        break;
-                    case 2:
-                        operand_ext = *reinterpret_cast<uint16_t *>(addr + this->offset);
-                        break;
-                    case 4:
-                        operand_ext = *reinterpret_cast<uint32_t *>(addr + this->offset);
-                        break;
-                    case 8:
-                        operand_ext = *reinterpret_cast<uint64_t *>(addr + this->offset);
-                        break;
+                    case 1: { uint8_t tmp; std::memcpy(&tmp, addr + this->offset, 1); operand_ext = tmp; break; }
+                    case 2: { uint16_t tmp; std::memcpy(&tmp, addr + this->offset, 2); operand_ext = tmp; break; }
+                    case 4: { uint32_t tmp; std::memcpy(&tmp, addr + this->offset, 4); operand_ext = tmp; break; }
+                    case 8: { std::memcpy(&operand_ext, addr + this->offset, 8); break; }
                     default:
                         return nullptr;
                 }
@@ -677,7 +696,8 @@ public:
 };
 
 // TODO not happy with this class (shared_ptr use, no consteval make variant)
-// FIXME behaves differently when compiled with MinGW-Clang64 than other compilers (UB)
+// FIXME need a consteval variant or to properly sequence static init with function_hook/portal
+// Segal's Law: "A man with a C++ compiler knows both specified and implementation-defined behaviour. A man with 4 C++ compilers only knows UB."
 // struct FirstMatchSig : ISigDescriptor {
 //     std::vector<std::shared_ptr<ISigDescriptor>> sigs_;
 

@@ -62,6 +62,7 @@ inline constexpr const auto DATAOFF_glaiel__Component___objid_counter = Indirect
 // TLS variable offsets
 inline constexpr const auto TLS0OFF_xoshiro256p_rng_context = IndirectSig::make<"48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 D9 48 81 EC B0 00 00 00 45 0F B6 E1 41 8B F0 48 8B F9 45 33 ED 41 BE ?? ?? ?? ??">(43, 4, false, false);
 
+// TODO this needs to be constexpr for bounded behaviour as SigPortalDescriptor makes a copy during static init
 // inline const auto TLS0OFF_xoshiro256p_rng_context = FirstMatchSig::make(
 //     // Mewgenics 1.1.x
 //     IndirectSig::make<"48 89 5C 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 D9 48 81 EC B0 00 00 00 45 0F B6 E1 41 8B F0 48 8B F9 45 33 ED 41 BE ?? ?? ?? ??">(43, 4, false, false),
