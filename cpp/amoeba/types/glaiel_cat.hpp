@@ -193,7 +193,7 @@ static_assert(sizeof(Equipment) == 0x60);
 
 struct CatData {
     uint64_t entropy;
-    podvector<uint8_t> unknown_17;
+    podvector<uint8_t> house_boss_kills;
     MsvcReleaseModeXWString name;
     MsvcReleaseModeXString nameplate_symbol;
     int32_t sex;

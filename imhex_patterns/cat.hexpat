@@ -260,6 +260,7 @@ struct Equipment {
         String aux_string;
         s32 uses_left;
         s32 unknown_2;
+        // Appears to be a bitfield indicating cursed or quest items
         s32 unknown_3;
         s32 unknown_4;
         u8 unknown_5;
@@ -294,8 +295,19 @@ s64 birthday @ $;
 // Only logged when cats die in the house, and not the field
 s64 deathday_house @ $;
 
-// some byte array, possibly related to house boss kills
-Vector<u64, u8> unknown_17 @ $;
+enum HouseBoss: u8 {
+    Guillotina,
+    Guillotina2,
+    Guillotina3,
+    Pyrophina,
+    Zaratana,
+    PyrophinaVsZaratana,
+    C800,
+    C1000,
+    HitlerIII
+};
+// House boss kills
+Vector<u64, HouseBoss> house_boss_kills @ $;
 
 enum Lifestage: u32 {
     // Kittens and younger adult cats
@@ -327,10 +339,14 @@ bitfield ClearedCampaignZonesB1 {
     core : 1;                     // 12
     unknown_13 : 1;               // 13; probably Rift, though haven't visited yet
     lab: 1;                       // 14
-    unknown_15: 1;                // 15; probably one of Ice Age/Future
+    ice_age: 1;                   // 15
 };
 bitfield ClearedCampaignZonesB2 {
-    unknown_23_16 : 8;            // 23:16; probably rest of Act 3
+    future: 1;                    // 16
+    jurassic: 1;                  // 17
+    end: 1;                       // 18
+    unknown_19;                   // 19; probably Infinite, though haven't visited yet
+    unknown_23_20 : 4;            // 23:16; probably unused
 };
 bitfield ClearedCampaignZonesB3To7 {
     unknown_b3_0: 8;

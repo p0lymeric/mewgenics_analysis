@@ -536,19 +536,19 @@ void edit_cat(CatData &cat) {
     ImGui::InputScalar("coi", ImGuiDataType_Double, &cat.coi);
     ImGui::InputScalar("birthday", ImGuiDataType_S64, &cat.birthday);
     ImGui::InputScalar("deathday_house", ImGuiDataType_S64, &cat.deathday_house);
-    ImguiTextStdFmt("unknown 17");
-    ImguiTextStdFmt("unknown 17 size/capacity: {} {}", cat.unknown_17.size_, cat.unknown_17.capacity_);
-    if(ImGui::BeginTable("unknown_17_table", 2)) {
+    ImguiTextStdFmt("house_boss_kills");
+    ImguiTextStdFmt("house_boss_kills size/capacity: {} {}", cat.house_boss_kills.size_, cat.house_boss_kills.capacity_);
+    if(ImGui::BeginTable("house_boss_kills_table", 2)) {
         ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthStretch, 1.0f);
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, 3.0f);
         ImGui::TableHeadersRow();
-        for(uint32_t i = 0; i < cat.unknown_17.size_; i++) {
+        for(uint32_t i = 0; i < cat.house_boss_kills.size_; i++) {
             ImGui::PushID(i);
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImguiTextStdFmt("{}", i);
             ImGui::TableNextColumn();
-            ImGui::InputScalar("##data", ImGuiDataType_U8, &cat.unknown_17.data_[i]);
+            ImGui::InputScalar("##data", ImGuiDataType_U8, &cat.house_boss_kills.data_[i]);
             ImGui::PopID();
         }
         ImGui::EndTable();
@@ -768,18 +768,18 @@ void show_cat(CatData &cat) {
     ImguiTextStdFmt("COI: {}", cat.coi);
     ImguiTextStdFmt("Birthday: {}", cat.birthday); // TODO calculate days ago
     ImguiTextStdFmt("Deathday (if died in house): {}", cat.deathday_house);
-    ImguiTextStdFmt("unknown 17");
-    ImguiTextStdFmt("unknown 17 size/capacity: {} {}", cat.unknown_17.size_, cat.unknown_17.capacity_);
-    if(ImGui::BeginTable("unknown_17_table", 2)) {
+    ImguiTextStdFmt("House boss kills");
+    ImguiTextStdFmt("House boss kills size/capacity: {} {}", cat.house_boss_kills.size_, cat.house_boss_kills.capacity_);
+    if(ImGui::BeginTable("house_boss_kills_table", 2)) {
         ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthStretch, 1.0f);
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, 3.0f);
         ImGui::TableHeadersRow();
-        for(uint32_t i = 0; i < cat.unknown_17.size_; i++) {
+        for(uint32_t i = 0; i < cat.house_boss_kills.size_; i++) {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImguiTextStdFmt("{}", i);
             ImGui::TableNextColumn();
-            ImguiTextStdFmt("{}", cat.unknown_17.data_[i]);
+            ImguiTextStdFmt("{}", cat.house_boss_kills.data_[i]);
         }
         ImGui::EndTable();
     }
@@ -1641,10 +1641,52 @@ void show_feline_therapist_window() {
                     }
                     ImGui::TreePop();
                 }
-                // if(ImGui::TreeNode("Siblings")) {
-                //     // and stepsiblings
-                //     ImGui::TreePop();
-                // }
+                if(ImGui::TreeNode("Siblings")) {
+                    // and stepsiblings
+                    auto parents = p_cdb->pedigree.child_to_parents_and_coi_map.get(&picker_table_selected_sql_id);
+                    std::set<int64_t> empty;
+                    std::set<int64_t> *p_a_children = &empty;
+                    std::set<int64_t> *p_b_children = &empty;
+                    if(parents != nullptr) {
+                        if(parents->val.parent_a != -1) {
+                            if(auto it = pedigree_index.children_table.find(parents->val.parent_a); it != pedigree_index.children_table.end()) {
+                                p_a_children = &it->second;
+                            }
+                        }
+                        if(parents->val.parent_b != -1) {
+                            if(auto it = pedigree_index.children_table.find(parents->val.parent_b); it != pedigree_index.children_table.end()) {
+                                p_b_children = &it->second;
+                            }
+                        }
+                    }
+                    auto sibling_line = [&](int64_t child_id, std::string relationship) {
+                        if(auto child_catdata = unified_cat_table.find(child_id); child_catdata != unified_cat_table.end()) {
+                            if(ImGui::TextLink(std::format("{} ({}) - {}", convert_utf16_wstring_to_utf8_string(child_catdata->second->name), child_catdata->first, relationship).c_str())) {
+                                if(picker_table_selected_sql_id != child_catdata->first) {
+                                    navigation_history.push(child_catdata->first);
+                                }
+                            }
+                        } else {
+                            ImguiTextStdFmt("??? ({}) - {}", child_id, relationship);
+                        }
+                    };
+                    for(auto sibling : *p_a_children) {
+                        if(sibling != picker_table_selected_sql_id && p_b_children->contains(sibling)) {
+                            sibling_line(sibling, "sibling");
+                        }
+                    }
+                    for(auto sibling : *p_a_children) {
+                        if(sibling != picker_table_selected_sql_id && !p_b_children->contains(sibling)) {
+                            sibling_line(sibling, "A-stepsibling");
+                        }
+                    }
+                    for(auto sibling : *p_b_children) {
+                        if(sibling != picker_table_selected_sql_id && !p_a_children->contains(sibling)) {
+                            sibling_line(sibling, "B-stepsibling");
+                        }
+                    }
+                    ImGui::TreePop();
+                }
                 if(ImGui::TreeNode("Mates")) {
                     if(auto my_mates = pedigree_index.mate_table.find(picker_table_selected_sql_id); my_mates != pedigree_index.mate_table.end()) {
                         for(auto mate : my_mates->second) {

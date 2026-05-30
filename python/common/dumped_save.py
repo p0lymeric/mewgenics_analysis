@@ -88,9 +88,9 @@ class Cat:
         _, self.mutations_offset_past = w_ra_of_lpvls('<Q', '<{length}s', '<i', 0, self.blob, self.passives_offset_past, 2, collect_data=False)
         self.equipment_offset_past = self.equipment(calculate_offset=True)
         _, self.collar_offset_past = parse_string(self.blob, self.equipment_offset_past, collect_data=False)
-        _, self.unknown_17_offset_past = w_ra_of_lpvls('<Q', '<{length}b', None, 0, self.blob, self.collar_offset_past + 28, 1, collect_data=False)
+        _, self.house_boss_kills_offset_past = w_ra_of_lpvls('<Q', '<{length}b', None, 0, self.blob, self.collar_offset_past + 28, 1, collect_data=False)
         # always verify full decode
-        assert(self.unknown_17_offset_past + 79 == len(blob))
+        assert(self.house_boss_kills_offset_past + 79 == len(blob))
 
         self.verify_assumptions()
 
@@ -300,32 +300,32 @@ class Cat:
         offset = self.collar_offset_past + 20
         return struct.unpack_from(f'<q', self.blob, offset=offset)[0]
 
-    def unknown_17(self):
+    def house_boss_kills(self):
         offset = self.collar_offset_past + 28
         return w_ra_of_lpvls('<Q', '<{length}b', None, 0, self.blob, self.collar_offset_past + 28, 1)[0]
 
     def lifestage(self):
-        offset = self.unknown_17_offset_past
+        offset = self.house_boss_kills_offset_past
         return struct.unpack_from(f'<I', self.blob, offset=offset)[0]
 
     def cleared_zones(self):
-        offset = self.unknown_17_offset_past + 4
+        offset = self.house_boss_kills_offset_past + 4
         return struct.unpack_from(f'<Q', self.blob, offset=offset)[0]
 
     def completed_act(self):
-        offset = self.unknown_17_offset_past + 12
+        offset = self.house_boss_kills_offset_past + 12
         return struct.unpack_from(f'<B', self.blob, offset=offset)[0]
 
     def completed_chapter(self):
-        offset = self.unknown_17_offset_past + 13
+        offset = self.house_boss_kills_offset_past + 13
         return struct.unpack_from(f'<B', self.blob, offset=offset)[0]
 
     def completed_difficulty(self):
-        offset = self.unknown_17_offset_past + 14
+        offset = self.house_boss_kills_offset_past + 14
         return struct.unpack_from(f'<B', self.blob, offset=offset)[0]
 
     def injuries(self):
-        offset = self.unknown_17_offset_past + 15
+        offset = self.house_boss_kills_offset_past + 15
         return Injuries._make(struct.unpack_from(f'<16I', self.blob, offset=offset))
 
     def as_dict(self):
@@ -364,7 +364,7 @@ class Cat:
             'coi': self.coi(),
             'birthday': self.birthday(),
             'deathday_house': self.deathday_house(),
-            'unknown_17': self.unknown_17(),
+            'house_boss_kills': self.house_boss_kills(),
             'lifestage': self.lifestage(),
             'cleared_zones': self.cleared_zones(),
             'completed_act': self.completed_act(),
