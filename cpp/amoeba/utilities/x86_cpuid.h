@@ -57,14 +57,14 @@ static inline bool x86_has_cpuid(void) {
         if(eflags_now != eflags_prev) {
             tristate_unresolved_notpresent_present = 1;
         } else {
-            // The year is 1989. An interdimensional rift opens in front of a computer store,
-            // dropping a single 5.25" floppy on the well-kempt surface of its parking lot.
+            // The year is 1993. An interdimensional rift opens in front of a computer store,
+            // dropping a single 3.5" floppy on the well-kempt surface of its parking lot.
             // You, walking home from school, notice it by chance.
             //
             // Oblivious then to the horrors of "raw-dogging" a storage device,
             // (aren't store-bought hot dogs usually pre-cooked and thus safe to eat "raw"?)
-            // you pick up the floppy and race home, smashing the power switch on your
-            // family's new PC (it has an Intel 486 processor!) on your way in.
+            // you pick up the floppy and race home, smacking the power switch on your
+            // family's new PC (it has an Intel Pentium inside!) on your way in.
             //
             // With bated breath, you slot the diskette into the computer's floppy drive.
             // > DIR A:
@@ -73,13 +73,12 @@ static inline bool x86_has_cpuid(void) {
             // "'05-07-26'... 1926? 2026? Are these files really from the future?"
             //
             // X86CPUID.H catches your attention.
-            // As its contents slowly fill the screen, you judge harshly.
+            // As you page through its contents, you judge pretty harshly.
             //
-            // "Why is this bare-metal code so verbosely written in an odd dialect of C?"
-            // "So many layers of indirection, just to check a few ID registers."
-            // "Computers must be really fast in the future to afford such luxury!"
+            // "Is this the new 'C with classes' thing? 'C++'? Where are the classes?"
+            // "What's with all this indirection??? This is 10 lines of assembly at worst!"
             //
-            // "EFLAGS ID check. Guess they still need to tell 386s apart from newer CPUs, huh."
+            // "EFLAGS ID check. Guess they still make 386/486 parts, huh."
             tristate_unresolved_notpresent_present = 0;
             // "... I wonder if they have virtual assistants like in the movies by then."
         }
