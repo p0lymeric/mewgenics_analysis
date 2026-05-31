@@ -12,4 +12,5 @@
 #include "types/glaiel_toplevel.hpp"
 #include "types/glaiel_utility.hpp"
 #include "types/glaiel_animation.hpp"
+#include "types/glaiel_progression.hpp"
 // IWYU pragma: end_exports

@@ -826,10 +826,10 @@ void show_data_explorer_window() {
             ImguiTextStdFmt("Executable base VA: {:p}", reinterpret_cast<void *>(G.host_exec_base_va));
             ImguiTextStdFmt("p_MewDirector: {:p}", static_cast<void *>(p_md));
             if(p_md != nullptr) {
-                CatDatabase *p_cdb = p_md->cats;
                 ImguiTextStdFmt("p_Director: {:p}", static_cast<void *>(&p_md->director));
-                ImguiTextStdFmt("p_CatDatabase: {:p}", static_cast<void *>(p_cdb));
+                ImguiTextStdFmt("p_CatDatabase: {:p}", static_cast<void *>(p_md->cats));
                 ImguiTextStdFmt("p_SQLSaveFile: {:p}", static_cast<void *>(&p_md->sqlsavefile));
+                ImguiTextStdFmt("p_GlobalProgressionData: {:p}", static_cast<void *>(p_md->global_progression_data));
             }
             ImGui::TreePop();
         }
@@ -1258,6 +1258,195 @@ void show_data_explorer_window() {
                     ImGui::TreePop();
                 }
                 ImGui::TreePop();
+            }
+            ImGui::TreePop();
+        }
+
+        if(ImGui::TreeNode("Global progression data")) {
+            if(p_md != nullptr) {
+                auto &gpd = *p_md->global_progression_data;
+                auto npc_line = [&](std::string name, NPC npc_id) {
+                    if(ImGui::TreeNode(name.c_str())) {
+                        NPCInfo &info = gpd.npc_info[npc_id];
+                        if(ImGui::TreeNode("Unlocks")) {
+                            for(auto &su : info.unlocks) {
+                                ImguiTextStdFmt("{}: {}", su.string, su.u32);
+                            }
+                            ImGui::TreePop();
+                        }
+                        ImguiTextStdFmt("Next unlock: {}", info.next_unlock);
+                        ImguiTextStdFmt("a: {}", info.a);
+                        ImguiTextStdFmt("next_unlock_cat_counter: {}", info.next_unlock_cat_counter);
+                        ImguiTextStdFmt("c: {}", info.c);
+                        ImguiTextStdFmt("d: {}", info.d);
+                        ImguiTextStdFmt("e: {}", info.e);
+                        ImguiTextStdFmt("f: {}", info.f);
+                        ImguiTextStdFmt("g: {}", info.g);
+                        std::string repr_h;
+                        for(int i = 0; i < 32; i++) {
+                            repr_h += std::format("{:02x}", info.h[i]);
+                        }
+                        ImguiTextStdFmt("h: {}", repr_h);
+                        ImguiTextStdFmt("i: {}", info.i);
+                        ImGui::TreePop();
+                    }
+                };
+                auto shop_line = [&](std::string name, MsvcReleaseModeVector<ShopItem> &shop) {
+                    if(ImGui::TreeNode(name.c_str())) {
+                        for(auto &item : shop) {
+                            // TODO more fields
+                            ImguiTextStdFmt("name: {} ({})", item.name, item.equipment.name);
+                        }
+                        ImGui::TreePop();
+                    }
+                };
+                auto unknown5_line = [&](std::string name, MsvcReleaseModeVector<DecompUnknown5Compartment> &v) {
+                    if(ImGui::TreeNode(name.c_str())) {
+                        for(auto &item : v) {
+                            // TODO more fields
+                            ImguiTextStdFmt("a: {}", item.a);
+                        }
+                        ImGui::TreePop();
+                    }
+                };
+                auto collarstats_line = [&](std::string name, MsvcReleaseModeVector<CollarStats> &v) {
+                    if(ImGui::TreeNode(name.c_str())) {
+                        if(ImGui::BeginTable("table1", 7)) {
+                            ImGui::TableSetupColumn("Chapter", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+                            ImGui::TableSetupColumn("Collar", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+                            ImGui::TableSetupColumn("a", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                            ImGui::TableSetupColumn("b", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                            ImGui::TableSetupColumn("c", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                            ImGui::TableSetupColumn("d", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                            ImGui::TableSetupColumn("e", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+                            ImGui::TableHeadersRow();
+                            for(auto &cs : v) {
+                                ImGui::TableNextRow();
+                                ImGui::TableNextColumn();
+                                ImguiTextStdFmt("{}", cs.chapter);
+                                ImGui::TableNextColumn();
+                                ImguiTextStdFmt("{}", cs.collar);
+                                ImGui::TableNextColumn();
+                                ImguiTextStdFmt("{}", cs.a);
+                                ImGui::TableNextColumn();
+                                ImguiTextStdFmt("{}", cs.b);
+                                ImGui::TableNextColumn();
+                                ImguiTextStdFmt("{}", cs.c);
+                                ImGui::TableNextColumn();
+                                ImguiTextStdFmt("{}", cs.d);
+                                ImGui::TableNextColumn();
+                                ImguiTextStdFmt("{}", cs.e);
+                            }
+                            ImGui::EndTable();
+                        }
+                        ImGui::TreePop();
+                    }
+                };
+                auto u32string_line = [&](std::string name, MsvcReleaseModeVector<U32StringPair> &v) {
+                    if(ImGui::TreeNode(name.c_str())) {
+                        for(auto &pair : v) {
+                            // TODO more fields
+                            ImguiTextStdFmt("{}: {}", pair.string, pair.u32);
+                        }
+                        ImGui::TreePop();
+                    }
+                };
+                auto string_line = [&](std::string name, MsvcReleaseModeVector<MsvcReleaseModeXString> &v) {
+                    if(ImGui::TreeNode(name.c_str())) {
+                        for(auto &s : v) {
+                            ImguiTextStdFmt("{}", s);
+                        }
+                        ImGui::TreePop();
+                    }
+                };
+                auto u64_line = [&](std::string name, podvector<uint64_t> &v) {
+                    if(ImGui::TreeNode(name.c_str())) {
+                        for(auto &s : v) {
+                            ImguiTextStdFmt("{}", s);
+                        }
+                        ImGui::TreePop();
+                    }
+                };
+                if(ImGui::TreeNode("NPCs")) {
+                    npc_line("Beanies", NPC::Beanies);
+                    npc_line("Butch", NPC::Butch);
+                    npc_line("Tink", NPC::Tink);
+                    npc_line("Frank", NPC::Frank);
+                    npc_line("Jack", NPC::Jack);
+                    npc_line("Tracy", NPC::Tracy);
+                    npc_line("Organ", NPC::Organ);
+                    npc_line("Steven", NPC::Steven);
+                    ImGui::TreePop();
+                }
+
+                if(ImGui::TreeNode("Shops")) {
+                    shop_line("Jack", gpd.jack_shop);
+                    shop_line("Tracy", gpd.tracy_shop);
+                    shop_line("Organ", gpd.organ_shop);
+                    shop_line("Idol", gpd.idol_shop);
+                    ImGui::TreePop();
+                }
+
+                ImguiTextStdFmt("unknown_1: {}", gpd.unknown_1);
+                ImguiTextStdFmt("unknown_2: {}", gpd.unknown_2);
+
+                string_line("collars", gpd.collars);
+                string_line("collarlessactives", gpd.collarlessactives);
+                string_line("collaractivespassives", gpd.collaractivespassives);
+
+                ImguiTextStdFmt("unknown_3: {}", gpd.unknown_3);
+
+                u32string_line("unknown_4", gpd.unknown_4);
+                u32string_line("plotflags", gpd.plotflags);
+
+                string_line("unlocks", gpd.unlocks);
+                string_line("class_unlock_helmets", gpd.class_unlock_helmets);
+                unknown5_line("unknown_5", gpd.unknown_5);
+
+                string_line("houseboss", gpd.houseboss);
+                string_line("chapters", gpd.chapters);
+                string_line("questitems", gpd.questitems);
+
+                collarstats_line("Collar stats", gpd.collarstats);
+                string_line("idols", gpd.idols);
+                string_line("idols2", gpd.idols2);
+
+                ImguiTextStdFmt("unknown_6: {}", gpd.unknown_6);
+                ImguiTextStdFmt("unknown_7: {}", gpd.unknown_7);
+                ImguiTextStdFmt("unknown_8: {}", gpd.unknown_8);
+
+                string_line("unknown_9", gpd.unknown_9);
+
+                ImguiTextStdFmt("steam_username: {}", gpd.steam_username);
+
+                ImguiTextStdFmt("unknown_11: {}", gpd.unknown_11);
+                ImguiTextStdFmt("unknown_12: {}", gpd.unknown_12);
+
+                string_line("beanies_questitems", gpd.beanies_questitems);
+                string_line("beanies_questitems2", gpd.beanies_questitems2);
+
+                string_line("unknown_13", gpd.unknown_13);
+                string_line("unknown_14", gpd.unknown_14);
+
+                ImguiTextStdFmt("unknown_15: {}", gpd.unknown_15);
+                ImguiTextStdFmt("unknown_16: {}", gpd.unknown_16);
+
+                for(int i = 0; i < 18; i++) {
+                    ImguiTextStdFmt("unknown_17[{}]: {}", i, gpd.unknown_17[i]);
+                }
+
+                ImguiTextStdFmt("unknown_35: {}", gpd.unknown_35);
+
+                string_line("unknown_36", gpd.unknown_36);
+                string_line("unknown_37", gpd.unknown_37);
+
+                u64_line("unknown_38", gpd.unknown_38);
+
+                ImguiTextStdFmt("kaiju: {}", gpd.kaiju);
+
+                string_line("unknown_39", gpd.unknown_39);
+
+                ImguiTextStdFmt("unknown_40: {}", gpd.unknown_40);
             }
             ImGui::TreePop();
         }

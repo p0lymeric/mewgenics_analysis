@@ -5,9 +5,9 @@ set(LIBTOMCRYPT_DIR ../../libtomcrypt)
 
 # List build targets
 add_library(${PROJECT_NAME} STATIC
-    ${LIBTOMCRYPT_DIR}/src/hashes/sha2/sha256_desc.c
+    # ${LIBTOMCRYPT_DIR}/src/hashes/sha2/sha256_desc.c
     ${LIBTOMCRYPT_DIR}/src/hashes/sha2/sha256.c
-    ${LIBTOMCRYPT_DIR}/src/hashes/sha2/sha256_x86.c
+    # ${LIBTOMCRYPT_DIR}/src/hashes/sha2/sha256_x86.c
 )
 
 # List include directories

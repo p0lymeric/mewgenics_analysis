@@ -3,6 +3,7 @@
 #include "types/glaiel_cat.hpp"
 #include "types/glaiel_ecs.hpp"
 #include "types/glaiel_sql.hpp"
+#include "types/glaiel_progression.hpp"
 
 // Reconstructions of Mewgenics structures.
 //
@@ -46,8 +47,9 @@ struct MewDirector {
     char _580[8];
     char _588[8];
     char _590[8];
-    CatDatabase* cats;
+    CatDatabase *cats;
     char _5a0[8];
+    GlobalProgressionData *global_progression_data;
     // likely a LOT more stuff...
 };
 static_assert(offsetof(MewDirector, director) == 40);
