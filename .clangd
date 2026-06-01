@@ -13,6 +13,7 @@ CompileFlags:
         - -Icpp/lib/sqlite3/third_party/sqlite-amalgamation-3380500
         - -Icpp/lib/libtomcrypt/src/headers
         - -Icpp/lib/mewjector
+        - -Icpp/lib/lua/third_party/lua-5.5.0/src
 
 Diagnostics:
     Includes:

@@ -11,10 +11,10 @@
 
 // Performs a potentially unsound read behind an address, without risk of triggering a fault.
 // "judgment-free read" or, "just f'ing read"
-// template<class T>
-// bool jf_read(const void *addr, T *buf) {
-//     return ReadProcessMemory(GetCurrentProcess(), addr, buf, sizeof(T), NULL);
-// }
+template<class T>
+bool jf_read(const void *addr, T *buf) {
+    return ReadProcessMemory(GetCurrentProcess(), addr, buf, sizeof(T), NULL);
+}
 
 // Read size can be returned in case the user is interested in knowing if the read managed to scrape some data before
 // faulting at a page boundary.

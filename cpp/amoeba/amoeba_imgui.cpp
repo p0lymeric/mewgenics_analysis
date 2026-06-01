@@ -16,7 +16,9 @@
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
 #include "misc/cpp/imgui_stdlib.h"
+#include "lua.hpp"
 
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <list>
@@ -45,12 +47,17 @@ struct ImguiPrivateState {
     bool show_data_explorer = false;
     bool show_save_explorer = false;
     bool show_debug_console = false;
+    bool show_lua_repl = false;
     bool show_imgui_demo = false;
 
     bool show_tlog_config = false;
 
     // save explorer
     std::unordered_map<int64_t, ManagedCatData> save_explorer_cats;
+
+    // Lua REPL
+    lua_State *repl_state = nullptr;
+    Ringbuffer<std::string> repl_lines = Ringbuffer<std::string>(10000);
 };
 
 static ImguiPrivateState P;
@@ -284,6 +291,7 @@ void show_main_menu_bar() {
             ImGui::Separator();
             if(ImGui::MenuItem("Enable experimental widgets", NULL, &P.enable_experimental_widgets)) {}
             if(ImGui::MenuItem("Show debug console", NULL, &P.show_debug_console)) {}
+            if(ImGui::MenuItem("Show Lua REPL", NULL, &P.show_lua_repl)) {}
             ImGui::EndMenu();
         }
         if(ImGui::BeginMenu("Logging")) {
@@ -325,6 +333,42 @@ void show_debug_console_window() {
             clipper.End();
         }
         ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void show_lua_repl_window() {
+    if(!P.show_lua_repl) {
+        return;
+    }
+    ImVec2 viewport_size = ImGui::GetMainViewport()->Size;
+    ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
+    if(ImGui::Begin("Lua REPL", &P.show_lua_repl)) {
+        if(ImGui::BeginChild("Scroller", ImVec2(0, -ImGui::GetFrameHeightWithSpacing()), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar)) {
+            ImGuiListClipper clipper;
+            int lines_count = static_cast<int>(P.repl_lines.size());
+            clipper.Begin(lines_count);
+            while(clipper.Step()) {
+                for(int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
+                    auto line = P.repl_lines[lines_count - i - 1];
+                    ImGui::TextUnformatted(line.data(), line.data() + line.size());
+                }
+            }
+            clipper.End();
+        }
+        ImGui::EndChild();
+        static std::string command;
+        if(ImGui::InputText("##command", &command, ImGuiInputTextFlags_EnterReturnsTrue)) {
+            if(!command.empty()) {
+                P.repl_lines.push(std::format("> {}", command));
+                if(luaL_dostring(P.repl_state, command.c_str()) != LUA_OK) {
+                    P.repl_lines.push(lua_tostring(P.repl_state, -1));
+                    lua_pop(P.repl_state, 1);
+                }
+                command.clear();
+            }
+            ImGui::SetKeyboardFocusHere(-1);
+        }
     }
     ImGui::End();
 }
@@ -2124,6 +2168,7 @@ void deinitialize_imgui() {
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext();
+        lua_close(P.repl_state);
     }
 }
 
@@ -2149,6 +2194,47 @@ MAKE_PHOOK(1, "SDL_GL_SwapWindow",
 
         ImGui_ImplSDL3_InitForOpenGL(window, SDL_GL_GetCurrentContext());
         ImGui_ImplOpenGL3_Init();
+
+        // This file is already 2.3 kLOCs and now it also instantiates a Lua interpreter context!
+        P.repl_state = luaL_newstate();
+        luaL_openlibs(P.repl_state);
+        lua_pushcfunction(P.repl_state, [](lua_State *state) -> int {
+            std::string line;
+            int n_args = lua_gettop(state);
+            for(int i = 1; i <= n_args; i++) {
+                size_t str_len;
+                const char *str = luaL_tolstring(state, i, &str_len);
+                line.append(str, str_len);
+                if(i < n_args) {
+                    line += "\t";
+                }
+                lua_pop(state, 1);
+            }
+            P.repl_lines.push(line);
+            return 0;
+        });
+        lua_setglobal(P.repl_state, "print");
+        auto make_jf_read_lua = [&]<typename T>(std::string name) {
+            lua_pushcfunction(P.repl_state, [](lua_State *state) -> int {
+                void *addr = reinterpret_cast<void *>(luaL_checkinteger(state, 1));
+                T read_value;
+                if(!jf_read<T>(addr, &read_value)) {
+                    luaL_error(state, "%s", std::format("cannot dereference: {:p}", addr).c_str());
+                }
+                lua_pushinteger(state, read_value);
+                return 1;
+            });
+            lua_setglobal(P.repl_state, name.c_str());
+        };
+        make_jf_read_lua.operator()<uint8_t>("jf_read_u8");
+        make_jf_read_lua.operator()<uint16_t>("jf_read_u16");
+        make_jf_read_lua.operator()<uint32_t>("jf_read_u32");
+        make_jf_read_lua.operator()<uint64_t>("jf_read_u64");
+        make_jf_read_lua.operator()<int8_t>("jf_read_i8");
+        make_jf_read_lua.operator()<int16_t>("jf_read_i16");
+        make_jf_read_lua.operator()<int32_t>("jf_read_i32");
+        make_jf_read_lua.operator()<int64_t>("jf_read_i64");
+
         P.initialized = true;
     }
 
@@ -2166,6 +2252,7 @@ MAKE_PHOOK(1, "SDL_GL_SwapWindow",
         show_data_explorer_window();
         show_save_explorer_window();
         show_debug_console_window();
+        show_lua_repl_window();
         show_tlog_config_window();
     }
 

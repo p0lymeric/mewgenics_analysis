@@ -27,6 +27,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     sqlite3
     libtomcrypt
     mewjector
+    lua
 )
 
 # List include directories
