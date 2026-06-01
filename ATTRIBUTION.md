@@ -45,6 +45,11 @@ This repository gratefully uses the following libraries.
   * `Copyright (c) 2026 Mewjector Contributors`
   * MIT License
   * https://github.com/githubuser508/mewjector/blob/main/LICENSE
+* Lua
+  * Used for scripting.
+  * `Copyright (C) 1994-2025 Lua.org, PUC-Rio.`
+  * MIT License
+  * https://www.lua.org/license.html
 
 #### Integrated
 * GON

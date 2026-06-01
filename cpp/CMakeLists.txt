@@ -21,6 +21,7 @@ add_subdirectory(lib/Mewgenics EXCLUDE_FROM_ALL)
 add_subdirectory(lib/sqlite3 EXCLUDE_FROM_ALL)
 add_subdirectory(lib/cmake/libtomcrypt EXCLUDE_FROM_ALL)
 add_subdirectory(lib/cmake/mewjector EXCLUDE_FROM_ALL)
+add_subdirectory(lib/lua EXCLUDE_FROM_ALL)
 
 # Read our CMakeLists
 add_subdirectory(amoeba)
