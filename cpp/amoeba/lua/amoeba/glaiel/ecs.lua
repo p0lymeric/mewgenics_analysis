@@ -1,0 +1,151 @@
+-- Mewgenics' ECS system
+-- polymeric 2026
+
+local cmem = require("amoeba.c.mem")
+local cmew = require("amoeba.c.mew")
+local msvc = require("amoeba.msvc")
+
+local ecs = {}
+
+local COMPONENT_OBJID_OFFSET = 8;
+local COMPONENT_DIRECTOR_OFFSET = 40
+local DIRECTOR_SCENES_OFFSET = 0
+local SCENE_NAME_OFFSET = 1208
+local SCENE_ENTITIES_OFFSET = 8
+local SCENE_COMPONENTLISTS_OFFSET = 24
+local ENTITY_COMPONENTS_OFFSET = 32
+
+--
+
+ecs.MewDirector = {}
+
+function ecs.MewDirector:new(addr)
+    addr = addr or cmew.get_mewdirector()
+
+    local o = { addr = addr }
+    setmetatable(o, self)
+    self.__index = self
+    return o
+end
+
+--
+
+ecs.Director = {}
+
+function ecs.Director:new(addr)
+    addr = addr or cmem.read_u64(ecs.MewDirector:new().addr + COMPONENT_DIRECTOR_OFFSET)
+
+    local o = { addr = addr }
+    setmetatable(o, self)
+    self.__index = self
+    return o
+end
+
+function ecs.Director:get_scenes()
+    local scenes = {}
+
+    local vec_scenes = self.addr + DIRECTOR_SCENES_OFFSET
+    local vec_first = cmem.read_u64(vec_scenes + 0)
+    local vec_last = cmem.read_u64(vec_scenes + 8)
+    local vec_size = (vec_last - vec_first) // 8
+
+    -- print(vec_first, vec_last, vec_last - vec_first, vec_size)
+
+    for i = 0, vec_size - 1 do
+        local scene = ecs.Scene:new(cmem.read_u64(vec_first + i * 8))
+        scenes[i + 1] = scene
+        scenes[scene:name()] = scene
+    end
+
+    return scenes
+end
+
+--
+
+ecs.Scene = {}
+
+function ecs.Scene:new(addr)
+    local o = { addr = addr }
+    setmetatable(o, self)
+    self.__index = self
+    return o
+end
+
+function ecs.Scene:name()
+    return msvc.xstring.read(self.addr + SCENE_NAME_OFFSET, 0)
+end
+
+function ecs.Scene:get_entities()
+    local entities = {}
+
+    local vec_entities = self.addr + SCENE_ENTITIES_OFFSET
+    local vec_first = cmem.read_u64(vec_entities + 8)
+    local vec_size = cmem.read_u32(vec_entities + 4)
+
+    for i = 0, vec_size - 1 do
+        local entity = ecs.Entity:new(cmem.read_u64(vec_first + i * 8))
+        entities[i + 1] = entity
+    end
+
+    return entities
+end
+
+function ecs.Scene:get_components()
+    local components = {}
+
+    local vec_components = cmem.read_u64(self.addr + SCENE_COMPONENTLISTS_OFFSET)
+    local vec_first = cmem.read_u64(vec_components + 8)
+    local vec_size = cmem.read_u32(vec_components + 4)
+
+    for i = 0, vec_size - 1 do
+        local component = ecs.Component:new(cmem.read_u64(vec_first + i * 8))
+        components[i + 1] = component
+    end
+
+    return components
+end
+
+--
+
+ecs.Entity = {}
+
+function ecs.Entity:new(addr)
+    local o = { addr = addr }
+    setmetatable(o, self)
+    self.__index = self
+    return o
+end
+
+function ecs.Entity:get_components()
+    local components = {}
+
+    local vec_components = self.addr + ENTITY_COMPONENTS_OFFSET
+    local vec_first = cmem.read_u64(vec_components + 8)
+    local vec_size = cmem.read_u32(vec_components + 4)
+
+    for i = 0, vec_size - 1 do
+        local component = ecs.Component:new(cmem.read_u64(vec_first + i * 8))
+        components[i + 1] = component
+    end
+
+    return components
+end
+
+--
+
+ecs.Component = {}
+
+function ecs.Component:new(addr)
+    local o = { addr = addr }
+    setmetatable(o, self)
+    self.__index = self
+    return o
+end
+
+function ecs.Component:objid()
+    return cmem.read_u32(self.addr + COMPONENT_OBJID_OFFSET)
+end
+
+--
+
+return ecs

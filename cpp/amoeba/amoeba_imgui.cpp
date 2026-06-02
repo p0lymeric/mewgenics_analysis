@@ -57,6 +57,7 @@ struct ImguiPrivateState {
 
     // Lua REPL
     lua_State *repl_state = nullptr;
+    Ringbuffer<std::string, true> repl_history = Ringbuffer<std::string, true>(100);
     Ringbuffer<std::string> repl_lines = Ringbuffer<std::string>(10000);
 };
 
@@ -333,42 +334,6 @@ void show_debug_console_window() {
             clipper.End();
         }
         ImGui::EndChild();
-    }
-    ImGui::End();
-}
-
-void show_lua_repl_window() {
-    if(!P.show_lua_repl) {
-        return;
-    }
-    ImVec2 viewport_size = ImGui::GetMainViewport()->Size;
-    ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
-    if(ImGui::Begin("Lua REPL", &P.show_lua_repl)) {
-        if(ImGui::BeginChild("Scroller", ImVec2(0, -ImGui::GetFrameHeightWithSpacing()), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar)) {
-            ImGuiListClipper clipper;
-            int lines_count = static_cast<int>(P.repl_lines.size());
-            clipper.Begin(lines_count);
-            while(clipper.Step()) {
-                for(int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
-                    auto line = P.repl_lines[lines_count - i - 1];
-                    ImGui::TextUnformatted(line.data(), line.data() + line.size());
-                }
-            }
-            clipper.End();
-        }
-        ImGui::EndChild();
-        static std::string command;
-        if(ImGui::InputText("##command", &command, ImGuiInputTextFlags_EnterReturnsTrue)) {
-            if(!command.empty()) {
-                P.repl_lines.push(std::format("> {}", command));
-                if(luaL_dostring(P.repl_state, command.c_str()) != LUA_OK) {
-                    P.repl_lines.push(lua_tostring(P.repl_state, -1));
-                    lua_pop(P.repl_state, 1);
-                }
-                command.clear();
-            }
-            ImGui::SetKeyboardFocusHere(-1);
-        }
     }
     ImGui::End();
 }
@@ -2163,12 +2128,194 @@ void show_tlog_config_window() {
     ImGui::End();
 }
 
+static int print_lua(lua_State *state) {
+    std::string line;
+    int n_args = lua_gettop(state);
+    for(int i = 1; i <= n_args; i++) {
+        size_t str_len;
+        const char *str = luaL_tolstring(state, i, &str_len);
+        line.append(str, str_len);
+        if(i < n_args) {
+            line += "\t";
+        }
+        lua_pop(state, 1);
+    }
+    P.repl_lines.push(line);
+    return 0;
+}
+
+template<typename T>
+static int safe_read_lua(lua_State *state) {
+    void *addr = reinterpret_cast<void *>(luaL_checkinteger(state, 1));
+    T read_value;
+    if(!jf_read<T>(addr, &read_value)) {
+        luaL_error(state, "%s", std::format("cannot dereference: {:p}", addr).c_str());
+    }
+    if constexpr(std::is_integral_v<T>) {
+        lua_pushinteger(state, read_value);
+    } else {
+        lua_pushnumber(state, read_value);
+    }
+    return 1;
+}
+
+static const luaL_Reg mem_lib_lua[] = {
+    { "read_u8", safe_read_lua<uint8_t> },
+    { "read_u16", safe_read_lua<uint16_t> },
+    { "read_u32", safe_read_lua<uint32_t> },
+    { "read_u64", safe_read_lua<uint64_t> },
+    { "read_i8", safe_read_lua<int8_t> },
+    { "read_i16", safe_read_lua<int16_t> },
+    { "read_i32", safe_read_lua<int32_t> },
+    { "read_i64", safe_read_lua<int64_t> },
+    { "read_f32", safe_read_lua<float> },
+    { "read_f64", safe_read_lua<double> },
+    { nullptr, nullptr }
+};
+
+static const luaL_Reg mew_lib_lua[] = {
+    {
+        "get_mewdirector",
+        [](lua_State *state) -> int {
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(get_p_mewdirector_singleton()));
+            return 1;
+        }
+    },
+    { nullptr, nullptr }
+};
+
+void initialize_lua_repl() {
+    // This file is already 2.3 kLOCs and now it also instantiates a Lua interpreter context!
+    if(P.repl_state != nullptr) {
+        lua_close(P.repl_state);
+    }
+    P.repl_state = luaL_newstate();
+    luaL_openlibs(P.repl_state);
+
+    lua_register(P.repl_state, "print", &print_lua);
+
+    luaL_requiref(P.repl_state, "amoeba.c", [](lua_State *state) -> int {
+        lua_newtable(state);
+
+        luaL_requiref(state, "amoeba.c.mem", [](lua_State *state) -> int {
+            luaL_newlib(state, mem_lib_lua);
+            return 1;
+        }, 0);
+        lua_setfield(state, -2, "mem");
+
+        luaL_requiref(state, "amoeba.c.mew", [](lua_State *state) -> int {
+            luaL_newlib(state, mew_lib_lua);
+            return 1;
+        }, 0);
+        lua_setfield(state, -2, "mew");
+
+        return 1;
+    }, 0);
+    lua_pop(P.repl_state, 1);
+
+    // https://stackoverflow.com/questions/4125971/setting-the-global-lua-path-variable-from-c-c
+    lua_getglobal(P.repl_state, "package");
+    lua_getfield(P.repl_state, -1, "path");
+    std::string curr_path = lua_tostring(P.repl_state, -1);
+    curr_path.append(";");
+    curr_path.append(convert_filesystem_path_to_utf8_string(get_module_file_path(reinterpret_cast<HMODULE>(G.dll_base_va)).parent_path() / "lua" / "?.lua"));
+    lua_pop(P.repl_state, 1);
+    lua_pushstring(P.repl_state, curr_path.c_str());
+    lua_setfield(P.repl_state, -2, "path");
+    lua_pop(P.repl_state, 1);
+}
+
+void show_lua_repl_window() {
+    if(!P.show_lua_repl) {
+        return;
+    }
+    ImVec2 viewport_size = ImGui::GetMainViewport()->Size;
+    ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
+    if(ImGui::Begin("Lua REPL", &P.show_lua_repl)) {
+        if(ImGui::BeginChild("Scroller", ImVec2(0, -ImGui::GetFrameHeightWithSpacing()), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar)) {
+            ImGuiListClipper clipper;
+            int lines_count = static_cast<int>(P.repl_lines.size());
+            clipper.Begin(lines_count);
+            while(clipper.Step()) {
+                for(int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
+                    auto line = P.repl_lines[lines_count - i - 1];
+                    ImGui::TextUnformatted(line.data(), line.data() + line.size());
+                }
+            }
+            clipper.End();
+        }
+        ImGui::EndChild();
+        static std::string command;
+        static bool engaged_undo_this_iteration = false;
+        if(ImGui::InputText("##command", &command, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory,
+            [](ImGuiInputTextCallbackData* data) -> int {
+                if(data->EventFlag == ImGuiInputTextFlags_CallbackHistory) {
+                    if(data->EventKey == ImGuiKey_UpArrow) {
+                        if(!engaged_undo_this_iteration) {
+                             P.repl_history.push(command);
+                        }
+                        engaged_undo_this_iteration = true;
+                        if(P.repl_history.undo_can_step_backward()) {
+                            P.repl_history.undo_step_backward();
+                            data->DeleteChars(0, data->BufTextLen);
+                            std::string str = P.repl_history.undo_peek().value_or("");
+                            data->InsertChars(0, str.data(), str.data() + str.size());
+                        }
+                    } else if(data->EventKey == ImGuiKey_DownArrow) {
+                        if(P.repl_history.undo_can_step_forward()) {
+                            P.repl_history.undo_step_forward();
+                            data->DeleteChars(0, data->BufTextLen);
+                            std::string str = P.repl_history.undo_peek().value_or("");
+                            data->InsertChars(0, str.data(), str.data() + str.size());
+                        }
+                        if(engaged_undo_this_iteration && !P.repl_history.undo_can_step_forward()) {
+                            P.repl_history.pop();
+                            engaged_undo_this_iteration = false;
+                        }
+                    }
+                }
+                return 0;
+            }
+        )) {
+            if(!command.empty()) {
+                if(engaged_undo_this_iteration && P.repl_history.undo_can_step_forward()) {
+                    P.repl_history.undo_attach();
+                    P.repl_history.pop();
+                } else if(engaged_undo_this_iteration) {
+                    P.repl_history.undo_attach();
+                    P.repl_history.pop();
+                    P.repl_history.push(command);
+                } else if(!engaged_undo_this_iteration) {
+                    P.repl_history.push(command);
+                }
+                engaged_undo_this_iteration = false;
+                P.repl_history.undo_attach();
+                P.repl_lines.push(std::format("> {}", command));
+                if(luaL_dostring(P.repl_state, command.c_str()) != LUA_OK) {
+                    P.repl_lines.push(lua_tostring(P.repl_state, -1));
+                    lua_pop(P.repl_state, 1);
+                }
+                command.clear();
+            }
+            ImGui::SetKeyboardFocusHere(-1);
+        }
+    }
+    ImGui::SameLine();
+    if(ImGui::Button("Reset")) {
+        initialize_lua_repl();
+    }
+    ImGui::End();
+}
+
 void deinitialize_imgui() {
     if(P.initialized) {
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext();
-        lua_close(P.repl_state);
+        if(P.repl_state != nullptr) {
+            lua_close(P.repl_state);
+            P.repl_state = nullptr;
+        }
     }
 }
 
@@ -2195,45 +2342,7 @@ MAKE_PHOOK(1, "SDL_GL_SwapWindow",
         ImGui_ImplSDL3_InitForOpenGL(window, SDL_GL_GetCurrentContext());
         ImGui_ImplOpenGL3_Init();
 
-        // This file is already 2.3 kLOCs and now it also instantiates a Lua interpreter context!
-        P.repl_state = luaL_newstate();
-        luaL_openlibs(P.repl_state);
-        lua_pushcfunction(P.repl_state, [](lua_State *state) -> int {
-            std::string line;
-            int n_args = lua_gettop(state);
-            for(int i = 1; i <= n_args; i++) {
-                size_t str_len;
-                const char *str = luaL_tolstring(state, i, &str_len);
-                line.append(str, str_len);
-                if(i < n_args) {
-                    line += "\t";
-                }
-                lua_pop(state, 1);
-            }
-            P.repl_lines.push(line);
-            return 0;
-        });
-        lua_setglobal(P.repl_state, "print");
-        auto make_jf_read_lua = [&]<typename T>(std::string name) {
-            lua_pushcfunction(P.repl_state, [](lua_State *state) -> int {
-                void *addr = reinterpret_cast<void *>(luaL_checkinteger(state, 1));
-                T read_value;
-                if(!jf_read<T>(addr, &read_value)) {
-                    luaL_error(state, "%s", std::format("cannot dereference: {:p}", addr).c_str());
-                }
-                lua_pushinteger(state, read_value);
-                return 1;
-            });
-            lua_setglobal(P.repl_state, name.c_str());
-        };
-        make_jf_read_lua.operator()<uint8_t>("jf_read_u8");
-        make_jf_read_lua.operator()<uint16_t>("jf_read_u16");
-        make_jf_read_lua.operator()<uint32_t>("jf_read_u32");
-        make_jf_read_lua.operator()<uint64_t>("jf_read_u64");
-        make_jf_read_lua.operator()<int8_t>("jf_read_i8");
-        make_jf_read_lua.operator()<int16_t>("jf_read_i16");
-        make_jf_read_lua.operator()<int32_t>("jf_read_i32");
-        make_jf_read_lua.operator()<int64_t>("jf_read_i64");
+        initialize_lua_repl();
 
         P.initialized = true;
     }
