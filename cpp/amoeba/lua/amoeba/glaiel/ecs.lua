@@ -1,6 +1,7 @@
 -- Mewgenics' ECS system
 -- polymeric 2026
 
+local ccall = require("amoeba.c.call")
 local cmem = require("amoeba.c.mem")
 local cmew = require("amoeba.c.mew")
 local msvc = require("amoeba.msvc")
@@ -9,6 +10,7 @@ local ecs = {}
 
 local COMPONENT_OBJID_OFFSET = 8;
 local COMPONENT_DIRECTOR_OFFSET = 40
+local COMPONENT_VTABLE_GETOBJECTTYPESTR_OFFSET = 0
 local DIRECTOR_SCENES_OFFSET = 0
 local SCENE_NAME_OFFSET = 1208
 local SCENE_ENTITIES_OFFSET = 8
@@ -142,8 +144,25 @@ function ecs.Component:new(addr)
     return o
 end
 
-function ecs.Component:objid()
+function ecs.Component:get_objid()
     return cmem.read_u32(self.addr + COMPONENT_OBJID_OFFSET)
+end
+
+function ecs.Component:get_object_type_str()
+    local vtable = cmem.read_u64(self.addr)
+    local fn = cmem.read_u64(vtable + COMPONENT_VTABLE_GETOBJECTTYPESTR_OFFSET)
+
+    local p_xstring = cmem.alloc(32)
+    cmem.unsafe_memset(p_xstring, 0, 32)
+    ccall.unsafe_invoke_rax_rcx_rdx(fn, self.addr, p_xstring)
+    local str = msvc.xstring.read(p_xstring, 0)
+    local capacity = cmem.unsafe_read_u64(p_xstring + 0x18)
+    if capacity >= 16 then
+        cmem.unsafe_free(cmem.unsafe_read_u64(p_xstring))
+    end
+    cmem.unsafe_free(p_xstring)
+
+    return str
 end
 
 --

@@ -1,4 +1,4 @@
--- C(++) interface module
+-- FFI calls
 -- polymeric 2026
 
 ---@meta
@@ -7,10 +7,8 @@
 -- Its contents are ignored by the actual Lua runtime because the
 -- C module is loaded at a higher precedence.
 
-local c = {}
+local call = {}
 
-c.call = require("amoeba.c.call")
-c.mem = require("amoeba.c.mem")
-c.mew = require("amoeba.c.mew")
+function call.unsafe_invoke_rax_rcx_rdx(fn, rcx, rdx) end
 
-return c
+return call

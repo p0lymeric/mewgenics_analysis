@@ -17,7 +17,7 @@ for _, scene in ipairs(scenes) do
     for i, entity in ipairs(scene:get_entities()) do
         print(string.format("    Entity %d:", i))
         for j, component in ipairs(entity:get_components()) do
-            print(string.format("        %d", component:objid()))
+            print(string.format("        %d", component:get_objid()))
         end
     end
 end
@@ -25,6 +25,6 @@ end
 for _, scene in ipairs(scenes) do
     print(scene:name())
     for i, component in ipairs(scene:get_components()) do
-        print(string.format("    %d", component:objid()))
+        print(string.format("    %d: %s", component:get_objid(), component:get_object_type_str()))
     end
 end

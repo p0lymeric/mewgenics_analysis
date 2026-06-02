@@ -2159,6 +2159,32 @@ static int safe_read_lua(lua_State *state) {
     return 1;
 }
 
+template<typename T>
+static int unsafe_read_lua(lua_State *state) {
+    T *addr = reinterpret_cast<T *>(luaL_checkinteger(state, 1));
+    if constexpr(std::is_integral_v<T>) {
+        lua_pushinteger(state, *addr);
+    } else {
+        lua_pushnumber(state, *addr);
+    }
+    return 1;
+}
+
+static const luaL_Reg call_lib_lua[] = {
+    {
+        "unsafe_invoke_rax_rcx_rdx",
+        [](lua_State *state) -> int {
+            auto fn = reinterpret_cast<void *(__cdecl *)(void *, void *)>(luaL_checkinteger(state, 1));
+            void *rcx = reinterpret_cast<void *>(luaL_checkinteger(state, 2));
+            void *rdx = reinterpret_cast<void *>(luaL_checkinteger(state, 3));
+            // FIXME sign extension
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(fn(rcx, rdx)));
+            return 1;
+        }
+    },
+    { nullptr, nullptr }
+};
+
 static const luaL_Reg mem_lib_lua[] = {
     { "read_u8", safe_read_lua<uint8_t> },
     { "read_u16", safe_read_lua<uint16_t> },
@@ -2170,6 +2196,51 @@ static const luaL_Reg mem_lib_lua[] = {
     { "read_i64", safe_read_lua<int64_t> },
     { "read_f32", safe_read_lua<float> },
     { "read_f64", safe_read_lua<double> },
+    { "unsafe_read_u8", unsafe_read_lua<uint8_t> },
+    { "unsafe_read_u16", unsafe_read_lua<uint16_t> },
+    { "unsafe_read_u32", unsafe_read_lua<uint32_t> },
+    { "unsafe_read_u64", unsafe_read_lua<uint64_t> },
+    { "unsafe_read_i8", unsafe_read_lua<int8_t> },
+    { "unsafe_read_i16", unsafe_read_lua<int16_t> },
+    { "unsafe_read_i32", unsafe_read_lua<int32_t> },
+    { "unsafe_read_i64", unsafe_read_lua<int64_t> },
+    { "unsafe_read_f32", unsafe_read_lua<float> },
+    { "unsafe_read_f64", unsafe_read_lua<double> },
+    {
+        "alloc",
+        [](lua_State *state) -> int {
+            size_t size = luaL_checkinteger(state, 1);
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(host_alloc(size)));
+            return 1;
+        }
+    },
+    {
+        "unsafe_free",
+        [](lua_State *state) -> int {
+            void *addr = reinterpret_cast<void *>(luaL_checkinteger(state, 1));
+            host_free(addr);
+            return 0;
+        }
+    },
+    {
+        "unsafe_realloc",
+        [](lua_State *state) -> int {
+            void *addr = reinterpret_cast<void *>(luaL_checkinteger(state, 1));
+            size_t size = luaL_checkinteger(state, 2);
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(host_realloc(addr, size)));
+            return 1;
+        }
+    },
+    {
+        "unsafe_memset",
+        [](lua_State *state) -> int {
+            void *addr = reinterpret_cast<void *>(luaL_checkinteger(state, 1));
+            char value = static_cast<char>(luaL_checkinteger(state, 2));
+            size_t size = luaL_checkinteger(state, 3);
+            std::memset(addr, value, size);
+            return 0;
+        }
+    },
     { nullptr, nullptr }
 };
 
@@ -2208,6 +2279,12 @@ void initialize_lua_repl() {
             return 1;
         }, 0);
         lua_setfield(state, -2, "mew");
+
+        luaL_requiref(state, "amoeba.c.call", [](lua_State *state) -> int {
+            luaL_newlib(state, call_lib_lua);
+            return 1;
+        }, 0);
+        lua_setfield(state, -2, "call");
 
         return 1;
     }, 0);
