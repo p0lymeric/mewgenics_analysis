@@ -74,7 +74,7 @@ function ecs.Scene:new(addr)
 end
 
 function ecs.Scene:name()
-    return msvc.xstring.read(self.addr + SCENE_NAME_OFFSET, 0)
+    return msvc.xstring.read(self.addr + SCENE_NAME_OFFSET)
 end
 
 function ecs.Scene:get_entities()
@@ -102,6 +102,7 @@ function ecs.Scene:get_components()
     for i = 0, vec_size - 1 do
         local component = ecs.Component:new(cmem.read_u64(vec_first + i * 8))
         components[i + 1] = component
+        components[component:get_object_type_str()] = component
     end
 
     return components
@@ -128,6 +129,7 @@ function ecs.Entity:get_components()
     for i = 0, vec_size - 1 do
         local component = ecs.Component:new(cmem.read_u64(vec_first + i * 8))
         components[i + 1] = component
+        components[component:get_object_type_str()] = component
     end
 
     return components
@@ -155,7 +157,7 @@ function ecs.Component:get_object_type_str()
     local p_xstring = cmem.alloc(32)
     cmem.unsafe_memset(p_xstring, 0, 32)
     ccall.unsafe_invoke_rax_rcx_rdx(fn, self.addr, p_xstring)
-    local str = msvc.xstring.read(p_xstring, 0)
+    local str = msvc.xstring.read(p_xstring)
     local capacity = cmem.unsafe_read_u64(p_xstring + 0x18)
     if capacity >= 16 then
         cmem.unsafe_free(cmem.unsafe_read_u64(p_xstring))

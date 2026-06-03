@@ -7,7 +7,7 @@ local xstring = {}
 
 function xstring.read(addr, max_size)
     if max_size == nil then
-        max_size = 100
+        max_size = 0
     end
 
     local size = cmem.read_u64(addr + 0x10)

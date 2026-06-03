@@ -11,6 +11,7 @@ add_library(${PROJECT_NAME} SHARED
     utilities/sqlite3_conn_wrapper.cpp
     utilities/mewjector_support.c
     utilities/imgui_support.cpp
+    utilities/lua_wrapper.cpp
     ffi/cat_factory.cpp
     ffi/experimental.cpp
 )
