@@ -9,6 +9,7 @@
 
 local mew = {}
 
+---@return integer
 function mew.get_mewdirector() end
 
 return mew

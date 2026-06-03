@@ -19,8 +19,12 @@ local ENTITY_COMPONENTS_OFFSET = 32
 
 --
 
+---@class MewDirector
+---@field addr integer
 ecs.MewDirector = {}
 
+---@param addr integer|nil
+---@return MewDirector
 function ecs.MewDirector:new(addr)
     addr = addr or cmew.get_mewdirector()
 
@@ -32,8 +36,12 @@ end
 
 --
 
+---@class Director
+---@field addr integer
 ecs.Director = {}
 
+---@param addr integer|nil
+---@return Director
 function ecs.Director:new(addr)
     addr = addr or cmem.read_u64(ecs.MewDirector:new().addr + COMPONENT_DIRECTOR_OFFSET)
 
@@ -43,6 +51,7 @@ function ecs.Director:new(addr)
     return o
 end
 
+---@return table<integer|string, Scene>
 function ecs.Director:get_scenes()
     local scenes = {}
 
@@ -64,8 +73,12 @@ end
 
 --
 
+---@class Scene
+---@field addr integer
 ecs.Scene = {}
 
+---@param addr integer
+---@return Scene
 function ecs.Scene:new(addr)
     local o = { addr = addr }
     setmetatable(o, self)
@@ -73,10 +86,12 @@ function ecs.Scene:new(addr)
     return o
 end
 
+---@return string
 function ecs.Scene:name()
     return msvc.xstring.read(self.addr + SCENE_NAME_OFFSET)
 end
 
+---@return Entity[]
 function ecs.Scene:get_entities()
     local entities = {}
 
@@ -92,6 +107,7 @@ function ecs.Scene:get_entities()
     return entities
 end
 
+---@return table<integer|string, Component>
 function ecs.Scene:get_components()
     local components = {}
 
@@ -110,8 +126,12 @@ end
 
 --
 
+---@class Entity
+---@field addr integer
 ecs.Entity = {}
 
+---@param addr integer
+---@return Entity
 function ecs.Entity:new(addr)
     local o = { addr = addr }
     setmetatable(o, self)
@@ -119,6 +139,7 @@ function ecs.Entity:new(addr)
     return o
 end
 
+---@return table<integer|string, Component>
 function ecs.Entity:get_components()
     local components = {}
 
@@ -137,8 +158,12 @@ end
 
 --
 
+---@class Component
+---@field addr integer
 ecs.Component = {}
 
+---@param addr integer
+---@return Component
 function ecs.Component:new(addr)
     local o = { addr = addr }
     setmetatable(o, self)
@@ -146,10 +171,12 @@ function ecs.Component:new(addr)
     return o
 end
 
+---@return integer
 function ecs.Component:get_objid()
     return cmem.read_u32(self.addr + COMPONENT_OBJID_OFFSET)
 end
 
+---@return string
 function ecs.Component:get_object_type_str()
     local vtable = cmem.read_u64(self.addr)
     local fn = cmem.read_u64(vtable + COMPONENT_VTABLE_GETOBJECTTYPESTR_OFFSET)

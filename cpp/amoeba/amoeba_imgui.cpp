@@ -60,6 +60,7 @@ struct ImguiPrivateState {
     LuaWrapper lua;
     Ringbuffer<std::string, true> repl_history = Ringbuffer<std::string, true>(100);
     Ringbuffer<std::string> repl_lines = Ringbuffer<std::string>(10000);
+    bool repl_lines_dirty = false;
 };
 
 static ImguiPrivateState P;
@@ -2133,10 +2134,23 @@ void show_lua_repl_window() {
     if(!P.show_lua_repl) {
         return;
     }
+    static bool autoscroll = true;
+    static bool autoscroll_d1 = false;
     ImVec2 viewport_size = ImGui::GetMainViewport()->Size;
     ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.4f, viewport_size.y * 0.4f), ImGuiCond_FirstUseEver);
     if(ImGui::Begin("Lua REPL", &P.show_lua_repl)) {
-        if(ImGui::BeginChild("Scroller", ImVec2(0, -ImGui::GetFrameHeightWithSpacing() * 2.0f), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar)) {
+        if(ImGui::BeginChild("Scroller", ImVec2(0, -ImGui::GetFrameHeightWithSpacing() * 3.0f), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar)) {
+            if(autoscroll_d1) {
+                // frame N: dirty, frame N+1: relayout, frame N+2(now): autoscroll
+                ImGui::SetScrollY(ImGui::GetScrollMaxY());
+                autoscroll_d1 = false;
+            }
+            if(P.repl_lines_dirty) {
+                if(autoscroll) {
+                    autoscroll_d1 = true;
+                }
+                P.repl_lines_dirty = false;
+            }
             ImGuiListClipper clipper;
             int lines_count = static_cast<int>(P.repl_lines.size());
             clipper.Begin(lines_count);
@@ -2189,10 +2203,6 @@ void show_lua_repl_window() {
         if(ImGui::Button("Submit")) {
             submit = true;
         }
-        ImGui::SameLine();
-        if(ImGui::Button("Reset")) {
-            P.lua.reset();
-        }
         if(submit) {
             if(!command.empty()) {
                 if(engaged_undo_this_iteration && P.repl_history.undo_can_step_forward()) {
@@ -2208,8 +2218,10 @@ void show_lua_repl_window() {
                 engaged_undo_this_iteration = false;
                 P.repl_history.undo_attach();
                 P.repl_lines.push(std::format("> {}", command));
+                P.repl_lines_dirty = true;
                 if(luaL_dostring(P.lua.state, command.c_str()) != LUA_OK) {
                     P.repl_lines.push(lua_tostring(P.lua.state, -1));
+                    P.repl_lines_dirty = true;
                     lua_pop(P.lua.state, 1);
                 }
                 command.clear();
@@ -2235,11 +2247,23 @@ void show_lua_repl_window() {
             if(std::filesystem::is_regular_file(path)) {
                 std::string pathstr = convert_filesystem_path_to_utf8_string(path);
                 P.repl_lines.push(std::format(">> {}", pathstr));
+                P.repl_lines_dirty = true;
                 if(luaL_dofile(P.lua.state, pathstr.c_str()) != LUA_OK) {
                     P.repl_lines.push(lua_tostring(P.lua.state, -1));
+                    P.repl_lines_dirty = true;
                     lua_pop(P.lua.state, 1);
                 }
             }
+        }
+        if(ImGui::Checkbox("Auto-scroll", &autoscroll)) {}
+        ImGui::SameLine();
+        if(ImGui::Button("Reset")) {
+            P.lua.reset();
+        }
+        ImGui::SameLine();
+        if(ImGui::Button("Clear")) {
+            P.repl_lines.clear();
+            P.repl_lines_dirty = true;
         }
     }
     ImGui::End();
@@ -2278,6 +2302,7 @@ MAKE_PHOOK(1, "SDL_GL_SwapWindow",
 
         P.lua.set_print_stdout_callback([](std::string line) {
             P.repl_lines.push(line);
+            P.repl_lines_dirty = true;
         });
         // FIXME static init hack since init() reads G.dll_base_va
         P.lua.reset();

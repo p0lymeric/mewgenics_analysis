@@ -9,6 +9,10 @@
 
 local call = {}
 
+---@param fn integer
+---@param rcx integer
+---@param rdx integer
+---@return integer
 function call.unsafe_invoke_rax_rcx_rdx(fn, rcx, rdx) end
 
 return call

@@ -5,6 +5,9 @@ local cmem = require("amoeba.c.mem")
 
 local xstring = {}
 
+---@param addr integer
+---@param max_size integer|nil
+---@return string
 function xstring.read(addr, max_size)
     if max_size == nil then
         max_size = 0
