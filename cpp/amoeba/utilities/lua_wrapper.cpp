@@ -9,6 +9,8 @@
 #include <cstring>
 #include <filesystem>
 
+#include <windows.h>
+
 // Lua wrapper
 //
 // polymeric 2026
@@ -16,6 +18,8 @@
 MAKE_SDPORTAL(DATAOFF_glaiel__MewDirector__p_singleton,
     MewDirector *, get_p_mewdirector_singleton
 )
+
+EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
 // TODO io.write
 static int print_lua(lua_State *state) {
@@ -212,10 +216,9 @@ void LuaWrapper::init() {
 
     // https://stackoverflow.com/questions/4125971/setting-the-global-lua-path-variable-from-c-c
     lua_getglobal(this->state, "package"); // push
-    // Set the module search path to be relative to our dll, not the host exe (LUA_PATH_DEFAULT)
+    // Set the module search path to be relative to our dll, not the host cwd (LUA_PATH_DEFAULT)
     std::string path;
-    // FIXME not correct during static init
-    std::filesystem::path dll_parent_dir = get_module_file_path(reinterpret_cast<HMODULE>(G.dll_base_va)).parent_path();
+    std::filesystem::path dll_parent_dir = get_module_file_path(reinterpret_cast<HMODULE>(&__ImageBase)).parent_path();
     path.append(convert_filesystem_path_to_utf8_string(dll_parent_dir / "lua" / "?.lua"));
     path.append(";");
     path.append(convert_filesystem_path_to_utf8_string(dll_parent_dir / "lua" / "?" / "init.lua"));

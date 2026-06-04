@@ -2228,7 +2228,7 @@ void show_lua_repl_window() {
             }
         }
 
-        static std::string filepath = "lua\\test.lua";
+        static std::string filepath = "lua\\scripts\\ecsdump.lua";
         bool run = false;
         if(ImGui::InputText("##script", &filepath, ImGuiInputTextFlags_EnterReturnsTrue)) {
             run = true;
@@ -2304,8 +2304,6 @@ MAKE_PHOOK(1, "SDL_GL_SwapWindow",
             P.repl_lines.push(line);
             P.repl_lines_dirty = true;
         });
-        // FIXME static init hack since init() reads G.dll_base_va
-        P.lua.reset();
 
         P.initialized = true;
     }
