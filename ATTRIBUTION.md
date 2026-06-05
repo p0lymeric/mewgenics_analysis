@@ -50,6 +50,11 @@ This repository gratefully uses the following libraries.
   * `Copyright (C) 1994-2025 Lua.org, PUC-Rio.`
   * MIT License
   * https://www.lua.org/license.html
+* libffi
+  * Used to dynamically dispatch C function calls.
+  * `libffi - Copyright (c) 1996-2025  Anthony Green, Red Hat, Inc and others.`
+  * MIT License
+  * https://github.com/libffi/libffi/blob/master/LICENSE
 
 #### Integrated
 * GON

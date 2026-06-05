@@ -1,0 +1,11 @@
+--- msvcc.sh
++++ msvcc.sh
+@@ -261,7 +261,7 @@
+       shift 1
+     ;;
+     *.c)
+-      args="$args $(cygpath -ma $1)"
++      args="$args '$(cygpath -ma $1)'"
+       shift 1
+     ;;
+     *)

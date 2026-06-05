@@ -29,6 +29,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     libtomcrypt
     mewjector
     lua
+    libffi
 )
 
 # List include directories

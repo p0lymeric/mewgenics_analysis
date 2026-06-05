@@ -19,3 +19,6 @@
 [submodule "cpp/lib/mewjector"]
 	path = cpp/lib/mewjector
 	url = https://github.com/githubuser508/mewjector
+[submodule "cpp/lib/libffi"]
+	path = cpp/lib/libffi
+	url = https://github.com/libffi/libffi
