@@ -183,10 +183,43 @@ static const luaL_Reg ffi_lib_lua[] = {
             // pp_avalue's latter half needs to point to its first half
             for(unsigned int i = 0; i < nargs; i++) {
                 lua_rawgeti(state, 4, i + 1);
-                pp_avalue[i] = reinterpret_cast<void *>(luaL_checkinteger(state, -1));
+                ffi_type *ty = p_cif->arg_types[i];
+                switch(ty->type) {
+                    case FFI_TYPE_FLOAT: {
+                        pp_avalue[i] = 0; // zero full 64 bits first
+                        float tmp = static_cast<float>(luaL_checknumber(state, -1));
+                        std::memcpy(&pp_avalue[i], &tmp, sizeof(float));
+                        break;
+                    }
+                    case FFI_TYPE_DOUBLE: {
+                        double tmp = luaL_checknumber(state, -1);
+                        std::memcpy(&pp_avalue[i], &tmp, sizeof(double));
+                        break;
+                    }
+                    // case FFI_TYPE_LONGDOUBLE: // not supported among Windows compiler superset
+                    // case FFI_TYPE_VOID: // not reachable
+                    case FFI_TYPE_INT:
+                    case FFI_TYPE_UINT8:
+                    case FFI_TYPE_SINT8:
+                    case FFI_TYPE_UINT16:
+                    case FFI_TYPE_SINT16:
+                    case FFI_TYPE_UINT32:
+                    case FFI_TYPE_SINT32:
+                    case FFI_TYPE_UINT64:
+                    case FFI_TYPE_SINT64:
+                    case FFI_TYPE_STRUCT:
+                    case FFI_TYPE_POINTER:
+                    // case FFI_TYPE_COMPLEX: // not supported among Windows compiler superset
+                    default:
+                        // we're truncating a 2's complement int64, so we shouldn't need to consider
+                        // sign extensions for narrower or equal width types
+                        pp_avalue[i] = reinterpret_cast<void *>(luaL_checkinteger(state, -1));
+                        break;
+                }
                 lua_pop(state, 1);
             }
 
+            // TODO should perform rvalue unwrapping
             ffi_call(p_cif, FFI_FN(fp), p_rvalue, &pp_avalue[nargs]);
             return 0;
         }
@@ -424,8 +457,8 @@ void LuaWrapper::init() {
             lua_setfield(state, -2, "double");
             lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_pointer));
             lua_setfield(state, -2, "pointer");
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_longdouble));
-            lua_setfield(state, -2, "longdouble");
+            // lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_longdouble));
+            // lua_setfield(state, -2, "longdouble");
             lua_setfield(state, -2, "e_type");
             return 1;
         }, 0);

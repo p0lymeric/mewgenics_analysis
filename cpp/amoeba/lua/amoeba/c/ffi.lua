@@ -39,7 +39,7 @@ ffi.e_type = {
     float = 9,
     double = 10,
     pointer = 11,
-    longdouble = 12,
+    -- longdouble = 12,
 }
 
 ---@alias ptype e_type|integer
