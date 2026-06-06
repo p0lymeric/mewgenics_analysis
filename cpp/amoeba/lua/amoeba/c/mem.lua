@@ -71,15 +71,49 @@ function mem.unsafe_read_f32(addr) end
 ---@return number
 function mem.unsafe_read_f64(addr) end
 
+---@param addr integer
+---@param data integer
+function mem.unsafe_write_u8(addr, data) end
+---@param addr integer
+---@param data integer
+function mem.unsafe_write_u16(addr, data) end
+---@param addr integer
+---@param data integer
+function mem.unsafe_write_u32(addr, data) end
+---@param addr integer
+---@param data integer
+function mem.unsafe_write_u64(addr, data) end
+---@param addr integer
+---@param data integer
+function mem.unsafe_write_i8(addr, data) end
+---@param addr integer
+---@param data integer
+function mem.unsafe_write_i16(addr, data) end
+---@param addr integer
+---@param data integer
+function mem.unsafe_write_i32(addr, data) end
+---@param addr integer
+---@param data integer
+function mem.unsafe_write_i64(addr, data) end
+---@param addr integer
+---@param data number
+function mem.unsafe_write_f32(addr, data) end
+---@param addr integer
+---@param data number
+function mem.unsafe_write_f64(addr, data) end
+
 ---@param size integer
 ---@return integer
 function mem.alloc(size) end
+
 ---@param addr integer
 function mem.unsafe_free(addr) end
+
 ---@param addr integer
 ---@param size integer
 ---@return integer
 function mem.unsafe_realloc(addr, size) end
+
 ---@param addr integer
 ---@param value integer
 ---@param size integer

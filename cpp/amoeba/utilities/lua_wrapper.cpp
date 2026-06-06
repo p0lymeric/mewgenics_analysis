@@ -11,6 +11,8 @@
 
 #include <windows.h>
 
+#include "ffi.h"
+
 // Lua wrapper
 //
 // polymeric 2026
@@ -75,14 +77,158 @@ static int unsafe_read_lua(lua_State *state) {
     return 1;
 }
 
-static const luaL_Reg call_lib_lua[] = {
+template<typename T>
+static int unsafe_write_lua(lua_State *state) {
+    T *addr = reinterpret_cast<T *>(luaL_checkinteger(state, 1));
+    if constexpr(std::is_integral_v<T>) {
+        T data = static_cast<T>(luaL_checkinteger(state, 2));
+        *addr = data;
+    } else {
+        T data = static_cast<T>(luaL_checknumber(state, 2));
+        *addr = data;
+    }
+    return 0;
+}
+
+static const luaL_Reg ffi_lib_lua[] = {
     {
-        "unsafe_invoke_rax_rcx_rdx",
+        "new_type",
         [](lua_State *state) -> int {
-            auto fn = reinterpret_cast<void *(__cdecl *)(void *, void *)>(luaL_checkinteger(state, 1));
-            void *rcx = reinterpret_cast<void *>(luaL_checkinteger(state, 2));
-            void *rdx = reinterpret_cast<void *>(luaL_checkinteger(state, 3));
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(fn(rcx, rdx)));
+            luaL_checktype(state, 1, LUA_TTABLE);
+            unsigned int nelements = static_cast<unsigned int>(lua_rawlen(state, 1));
+            ffi_type **pp_elements = new ffi_type *[nelements + 1];
+
+            for(unsigned int i = 0; i < nelements; i++) {
+                lua_rawgeti(state, 1, i + 1);
+                pp_elements[i] = reinterpret_cast<ffi_type *>(luaL_checkinteger(state, -1));
+                lua_pop(state, 1);
+            }
+            pp_elements[nelements] = nullptr;
+
+            ffi_type *p_type = new ffi_type; // TODO can throw in which case we should free pp_elements
+
+            // size, alignment are automatically set
+            // type must be STRUCT
+            p_type->size = 0;
+            p_type->alignment = 0;
+            p_type->type = FFI_TYPE_STRUCT;
+            p_type->elements = pp_elements;
+
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(p_type));
+            return 1;
+        }
+    },
+    {
+        "unsafe_delete_type",
+        [](lua_State *state) -> int {
+            ffi_type *p_type = reinterpret_cast<ffi_type *>(luaL_checkinteger(state, 1));
+
+            delete[] p_type->elements;
+            delete p_type;
+            return 0;
+        }
+    },
+    {
+        "new_cif",
+        [](lua_State *state) -> int {
+            ffi_abi abi = static_cast<ffi_abi>(luaL_checkinteger(state, 1));
+            ffi_type *p_rtype = reinterpret_cast<ffi_type *>(luaL_checkinteger(state, 2));
+            luaL_checktype(state, 3, LUA_TTABLE);
+            unsigned int nargs = static_cast<unsigned int>(lua_rawlen(state, 3));
+            ffi_type **pp_atypes = new ffi_type *[nargs];
+            for(unsigned int i = 0; i < nargs; i++) {
+                lua_rawgeti(state, 3, i + 1);
+                pp_atypes[i] = reinterpret_cast<ffi_type *>(luaL_checkinteger(state, -1));
+                lua_pop(state, 1);
+            }
+
+            ffi_cif *p_cif = new ffi_cif; // TODO can throw in which case we should free pp_atypes
+            // std::memset(p_cif, 0, sizeof(ffi_cif));
+
+            ffi_status result = ffi_prep_cif(p_cif, abi, nargs, p_rtype, pp_atypes);
+            if(result != FFI_OK) {
+                delete[] pp_atypes;
+                delete p_cif;
+                luaL_error(state, "ffi_prep_cif failed with status %d", result);
+            }
+
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(p_cif));
+            return 1;
+        }
+    },
+    {
+        "unsafe_delete_cif",
+        [](lua_State *state) -> int {
+            ffi_cif *p_cif = reinterpret_cast<ffi_cif *>(luaL_checkinteger(state, 1));
+
+            delete[] p_cif->arg_types;
+            delete p_cif;
+            return 0;
+        }
+    },
+    {
+        "unsafe_call",
+        [](lua_State *state) -> int {
+            ffi_cif *p_cif = reinterpret_cast<ffi_cif *>(luaL_checkinteger(state, 1));
+            void *fp = reinterpret_cast<void *>(luaL_checkinteger(state, 2));
+            void *p_rvalue = reinterpret_cast<void *>(luaL_checkinteger(state, 3));
+            luaL_checktype(state, 4, LUA_TTABLE);
+            unsigned int nargs = static_cast<unsigned int>(lua_rawlen(state, 4));
+            void **pp_avalue = reinterpret_cast<void **>(luaL_checkinteger(state, 5));
+
+            if (nargs != p_cif->nargs) {
+                luaL_error(state, "lua table length %d does not match ffi_cif nargs %d", nargs, p_cif->nargs);
+            }
+
+            // pp_avalue's latter half needs to point to its first half
+            for(unsigned int i = 0; i < nargs; i++) {
+                lua_rawgeti(state, 4, i + 1);
+                pp_avalue[i] = reinterpret_cast<void *>(luaL_checkinteger(state, -1));
+                lua_pop(state, 1);
+            }
+
+            ffi_call(p_cif, FFI_FN(fp), p_rvalue, &pp_avalue[nargs]);
+            return 0;
+        }
+    },
+{
+        "alloc_rvalue_avalue_buffers",
+        [](lua_State *state) -> int {
+            ffi_cif *p_cif = reinterpret_cast<ffi_cif *>(luaL_checkinteger(state, 1));
+
+            void **pp_avalue = (void **)std::malloc(sizeof(void *) * p_cif->nargs * 2);
+            for(unsigned int i = 0; i < p_cif->nargs; i++) {
+                pp_avalue[p_cif->nargs + i] = &pp_avalue[i];
+            }
+
+            // TODO aligned malloc?
+            void * p_rvalue = std::malloc(p_cif->rtype->size);
+
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(p_rvalue));
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(pp_avalue));
+            return 2;
+        }
+    },
+    {
+        "get_module_handle",
+        [](lua_State *state) -> int {
+            const char *module_name = luaL_checkstring(state, 1);
+
+            lua_Integer addr = reinterpret_cast<lua_Integer>(GetModuleHandleW(convert_utf8_string_to_utf16_wstring(module_name).c_str()));
+
+            lua_pushinteger(state, addr);
+            return 1;
+        }
+    },
+    {
+        "get_proc_address",
+        [](lua_State *state) -> int {
+            HMODULE h_module = reinterpret_cast<HMODULE>(luaL_checkinteger(state, 1));
+            const char *proc_name = luaL_checkstring(state, 2);
+
+            lua_Integer addr = reinterpret_cast<lua_Integer>(GetProcAddress(h_module, proc_name));
+
+            lua_pushinteger(state, addr);
             return 1;
         }
     },
@@ -110,11 +256,21 @@ static const luaL_Reg mem_lib_lua[] = {
     { "unsafe_read_i64", unsafe_read_lua<int64_t> },
     { "unsafe_read_f32", unsafe_read_lua<float> },
     { "unsafe_read_f64", unsafe_read_lua<double> },
+    { "unsafe_write_u8", unsafe_write_lua<uint8_t> },
+    { "unsafe_write_u16", unsafe_write_lua<uint16_t> },
+    { "unsafe_write_u32", unsafe_write_lua<uint32_t> },
+    { "unsafe_write_u64", unsafe_write_lua<uint64_t> },
+    { "unsafe_write_i8", unsafe_write_lua<int8_t> },
+    { "unsafe_write_i16", unsafe_write_lua<int16_t> },
+    { "unsafe_write_i32", unsafe_write_lua<int32_t> },
+    { "unsafe_write_i64", unsafe_write_lua<int64_t> },
+    { "unsafe_write_f32", unsafe_write_lua<float> },
+    { "unsafe_write_f64", unsafe_write_lua<double> },
     {
         "alloc",
         [](lua_State *state) -> int {
             size_t size = luaL_checkinteger(state, 1);
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(host_alloc(size)));
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(std::malloc(size)));
             return 1;
         }
     },
@@ -122,7 +278,7 @@ static const luaL_Reg mem_lib_lua[] = {
         "unsafe_free",
         [](lua_State *state) -> int {
             void *addr = reinterpret_cast<void *>(luaL_checkinteger(state, 1));
-            host_free(addr);
+            std::free(addr);
             return 0;
         }
     },
@@ -131,7 +287,7 @@ static const luaL_Reg mem_lib_lua[] = {
         [](lua_State *state) -> int {
             void *addr = reinterpret_cast<void *>(luaL_checkinteger(state, 1));
             size_t size = luaL_checkinteger(state, 2);
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(host_realloc(addr, size)));
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(std::realloc(addr, size)));
             return 1;
         }
     },
@@ -153,6 +309,31 @@ static const luaL_Reg mew_lib_lua[] = {
         "get_mewdirector",
         [](lua_State *state) -> int {
             lua_pushinteger(state, reinterpret_cast<lua_Integer>(get_p_mewdirector_singleton()));
+            return 1;
+        }
+    },
+    {
+        "host_alloc",
+        [](lua_State *state) -> int {
+            size_t size = luaL_checkinteger(state, 1);
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(host_alloc(size)));
+            return 1;
+        }
+    },
+    {
+        "unsafe_host_free",
+        [](lua_State *state) -> int {
+            void *addr = reinterpret_cast<void *>(luaL_checkinteger(state, 1));
+            host_free(addr);
+            return 0;
+        }
+    },
+    {
+        "unsafe_host_realloc",
+        [](lua_State *state) -> int {
+            void *addr = reinterpret_cast<void *>(luaL_checkinteger(state, 1));
+            size_t size = luaL_checkinteger(state, 2);
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(host_realloc(addr, size)));
             return 1;
         }
     },
@@ -192,6 +373,64 @@ void LuaWrapper::init() {
     luaL_requiref(this->state, "amoeba.c", [](lua_State *state) -> int {
         lua_newtable(state);
 
+        luaL_requiref(state, "amoeba.c.ffi", [](lua_State *state) -> int {
+            luaL_newlib(state, ffi_lib_lua);
+
+            // e_status
+            lua_newtable(state);
+            lua_pushinteger(state, FFI_OK);
+            lua_setfield(state, -2, "OK");
+            lua_pushinteger(state, FFI_BAD_TYPEDEF);
+            lua_setfield(state, -2, "BAD_TYPEDEF");
+            lua_pushinteger(state, FFI_BAD_ABI);
+            lua_setfield(state, -2, "BAD_ABI");
+            lua_pushinteger(state, FFI_BAD_ARGTYPE);
+            lua_setfield(state, -2, "BAD_ARGTYPE");
+            lua_setfield(state, -2, "e_status");
+
+            // e_abi
+            lua_newtable(state);
+            lua_pushinteger(state, FFI_WIN64);
+            lua_setfield(state, -2, "WIN64");
+            lua_pushinteger(state, FFI_GNUW64);
+            lua_setfield(state, -2, "GNUW64");
+            // lua_pushinteger(state, FFI_DEFAULT_ABI);
+            // lua_setfield(state, -2, "DEFAULT_ABI");
+            lua_setfield(state, -2, "e_abi");
+
+            // e_type
+            lua_newtable(state);
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_void));
+            lua_setfield(state, -2, "void");
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_uint8));
+            lua_setfield(state, -2, "uint8");
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_sint8));
+            lua_setfield(state, -2, "sint8");
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_uint16));
+            lua_setfield(state, -2, "uint16");
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_sint16));
+            lua_setfield(state, -2, "sint16");
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_uint32));
+            lua_setfield(state, -2, "uint32");
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_sint32));
+            lua_setfield(state, -2, "sint32");
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_uint64));
+            lua_setfield(state, -2, "uint64");
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_sint64));
+            lua_setfield(state, -2, "sint64");
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_float));
+            lua_setfield(state, -2, "float");
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_double));
+            lua_setfield(state, -2, "double");
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_pointer));
+            lua_setfield(state, -2, "pointer");
+            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_longdouble));
+            lua_setfield(state, -2, "longdouble");
+            lua_setfield(state, -2, "e_type");
+            return 1;
+        }, 0);
+        lua_setfield(state, -2, "ffi");
+
         luaL_requiref(state, "amoeba.c.mem", [](lua_State *state) -> int {
             luaL_newlib(state, mem_lib_lua);
             return 1;
@@ -203,12 +442,6 @@ void LuaWrapper::init() {
             return 1;
         }, 0);
         lua_setfield(state, -2, "mew");
-
-        luaL_requiref(state, "amoeba.c.call", [](lua_State *state) -> int {
-            luaL_newlib(state, call_lib_lua);
-            return 1;
-        }, 0);
-        lua_setfield(state, -2, "call");
 
         return 1;
     }, 0);

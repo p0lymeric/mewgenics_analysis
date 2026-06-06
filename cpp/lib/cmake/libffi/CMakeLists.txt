@@ -28,7 +28,18 @@ add_library(${PROJECT_NAME} STATIC
     ${LIBFFI_DIR}/src/x86/ffiw64.c
 )
 if(MSVC)
-    target_sources(${PROJECT_NAME} PRIVATE ${LIBFFI_DIR}/src/x86/win64_intel.S)
+    add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/win64_intel.asm
+        COMMAND ${CMAKE_C_COMPILER} /EP /P
+                /I ${CMAKE_CURRENT_SOURCE_DIR}/${LIBFFI_DIR}/include
+                /I ${CMAKE_CURRENT_SOURCE_DIR}/${LIBFFI_DIR}/src/x86
+                /I ${CMAKE_CURRENT_SOURCE_DIR}/autoconf
+                /DFFI_STATIC_BUILD
+                /Fi${CMAKE_CURRENT_BINARY_DIR}/win64_intel.asm
+                ${CMAKE_CURRENT_SOURCE_DIR}/${LIBFFI_DIR}/src/x86/win64_intel.S
+        DEPENDS ${LIBFFI_DIR}/src/x86/win64_intel.S
+    )
+    target_sources(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/win64_intel.asm)
 elseif(MINGW)
     target_sources(${PROJECT_NAME} PRIVATE ${LIBFFI_DIR}/src/x86/win64.S)
 endif()
@@ -44,7 +55,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 )
 
 # List definitions
-target_compile_definitions(${PROJECT_NAME} PRIVATE
+target_compile_definitions(${PROJECT_NAME} PUBLIC
     FFI_STATIC_BUILD
 )
 

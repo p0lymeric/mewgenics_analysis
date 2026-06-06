@@ -9,7 +9,7 @@
 
 local c = {}
 
-c.call = require("amoeba.c.call")
+c.ffi = require("amoeba.c.ffi")
 c.mem = require("amoeba.c.mem")
 c.mew = require("amoeba.c.mew")
 

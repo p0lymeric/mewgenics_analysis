@@ -12,4 +12,16 @@ local mew = {}
 ---@return integer
 function mew.get_mewdirector() end
 
+---@param size integer
+---@return integer
+function mew.host_alloc(size) end
+
+---@param addr integer
+function mew.unsafe_host_free(addr) end
+
+---@param addr integer
+---@param size integer
+---@return integer
+function mew.unsafe_host_realloc(addr, size) end
+
 return mew

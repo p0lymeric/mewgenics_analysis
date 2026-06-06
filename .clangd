@@ -14,6 +14,8 @@ CompileFlags:
         - -Icpp/lib/libtomcrypt/src/headers
         - -Icpp/lib/mewjector
         - -Icpp/lib/lua/third_party/lua-5.5.0/src
+        - -Icpp/lib/cmake/libffi/autoconf
+        - -Icpp/lib/libffi/src/x86
 
 Diagnostics:
     Includes:
