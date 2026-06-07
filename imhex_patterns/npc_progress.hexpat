@@ -171,6 +171,7 @@ Vector<u64, String> unknown_37 @ $;
 
 Vector<u64, u64> unknown_38 @ $;
 
+// populated after Pyrophina vs. Zaratana, unset after Rift unlock
 String kaiju @ $;
 
 Vector<u64, String> unknown_39 @ $;

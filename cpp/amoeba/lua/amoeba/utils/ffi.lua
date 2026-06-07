@@ -44,12 +44,10 @@ function ffi.CFunction:new(rtype, atypes, abi)
 end
 
 ---@param fp integer
----@param ... integer
----@return integer
+---@param ... integer|number
+---@return integer|number|nil
 function ffi.CFunction:unsafe_call(fp, ...)
-    -- TODO should perform rvalue unwrapping on the C side
-    cffi.unsafe_call(self.addr, fp, self.p_rvalue, { ... }, self.pp_avalue)
-    return self.p_rvalue
+    return cffi.unsafe_call(self.addr, fp, self.p_rvalue, { ... }, self.pp_avalue)
 end
 
 --

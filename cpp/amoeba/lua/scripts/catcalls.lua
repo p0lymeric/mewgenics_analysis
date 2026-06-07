@@ -1,4 +1,4 @@
--- Test script: Catcalls (the not creepy kind)
+-- Test script: Catcalls (not the creepy kind)
 -- polymeric 2026
 
 local amoeba = require("amoeba")
@@ -44,22 +44,18 @@ local cstring = function(str)
     return p_cstr
 end
 
-local p_sinpi = cfun_sin:unsafe_call(fp_sin, math.pi)
-local sinpi = amoeba.c.mem.unsafe_read_f64(p_sinpi)
+local sinpi = cfun_sin:unsafe_call(fp_sin, math.pi)
 
-local p_cospi = cfun_cosf:unsafe_call(fp_cosf, math.pi)
-local cospi = amoeba.c.mem.unsafe_read_f32(p_cospi)
+local cospi = cfun_cosf:unsafe_call(fp_cosf, math.pi)
 
 local p_text = cstring(string.format("mrrow (fun math facts)\nsin(pi)=%f\ncos(pi)=%f", sinpi, cospi))
 local p_caption = cstring("meow meow")
 
-local pp_window = cfun_get_window:unsafe_call(fp_get_window)
-local p_window = amoeba.c.mem.unsafe_read_u64(pp_window)
+local p_window = cfun_get_window:unsafe_call(fp_get_window)
 
 cfun_minimize:unsafe_call(fp_minimize, p_window)
-local p_ret_val = cfun_messageboxa:unsafe_call(fp_messageboxa, 0, p_text, p_caption, 0)
+local ret_val = cfun_messageboxa:unsafe_call(fp_messageboxa, 0, p_text, p_caption, 0)
 
-local ret_val = amoeba.c.mem.unsafe_read_i32(p_ret_val)
 print(string.format("MessageBoxA returned %d", ret_val))
 
 amoeba.c.mem.unsafe_free(p_text)

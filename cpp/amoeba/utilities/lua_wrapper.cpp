@@ -219,9 +219,64 @@ static const luaL_Reg ffi_lib_lua[] = {
                 lua_pop(state, 1);
             }
 
-            // TODO should perform rvalue unwrapping
             ffi_call(p_cif, FFI_FN(fp), p_rvalue, &pp_avalue[nargs]);
-            return 0;
+
+            switch(p_cif->rtype->type) {
+                case FFI_TYPE_FLOAT: {
+                    float tmp;
+                    std::memcpy(&tmp, p_rvalue, sizeof(float));
+                    lua_pushnumber(state, tmp);
+                    return 1;
+                }
+                case FFI_TYPE_DOUBLE: {
+                    double tmp;
+                    std::memcpy(&tmp, p_rvalue, sizeof(double));
+                    lua_pushnumber(state, tmp);
+                    return 1;
+                }
+                // case FFI_TYPE_LONGDOUBLE: // not supported among Windows compiler superset
+                case FFI_TYPE_VOID:
+                    return 0;
+                case FFI_TYPE_INT:
+                    lua_pushinteger(state, *reinterpret_cast<int32_t *>(p_rvalue));
+                    return 1;
+                case FFI_TYPE_UINT8:
+                    lua_pushinteger(state, *reinterpret_cast<uint8_t *>(p_rvalue));
+                    return 1;
+                case FFI_TYPE_SINT8:
+                    lua_pushinteger(state, *reinterpret_cast<int8_t *>(p_rvalue));
+                    return 1;
+                case FFI_TYPE_UINT16:
+                    lua_pushinteger(state, *reinterpret_cast<uint16_t *>(p_rvalue));
+                    return 1;
+                case FFI_TYPE_SINT16:
+                    lua_pushinteger(state, *reinterpret_cast<int16_t *>(p_rvalue));
+                    return 1;
+                case FFI_TYPE_UINT32:
+                    lua_pushinteger(state, *reinterpret_cast<uint32_t *>(p_rvalue));
+                    return 1;
+                case FFI_TYPE_SINT32:
+                    lua_pushinteger(state, *reinterpret_cast<int32_t *>(p_rvalue));
+                    return 1;
+                case FFI_TYPE_UINT64:
+                    lua_pushinteger(state, *reinterpret_cast<uint64_t *>(p_rvalue));
+                    return 1;
+                case FFI_TYPE_SINT64:
+                    lua_pushinteger(state, *reinterpret_cast<int64_t *>(p_rvalue));
+                    return 1;
+                case FFI_TYPE_STRUCT:
+                    // TODO need to investigate struct support
+                    lua_pushinteger(state, reinterpret_cast<uint64_t>(p_rvalue));
+                    return 1;
+                case FFI_TYPE_POINTER:
+                    lua_pushinteger(state, *reinterpret_cast<uint64_t *>(p_rvalue));
+                    return 1;
+                // case FFI_TYPE_COMPLEX: // not supported among Windows compiler superset
+                default:
+                    // probably untraversable case
+                    lua_pushinteger(state, reinterpret_cast<uint64_t>(p_rvalue));
+                    return 1;
+            }
         }
     },
 {

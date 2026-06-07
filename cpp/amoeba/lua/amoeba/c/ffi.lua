@@ -63,8 +63,9 @@ function ffi.unsafe_delete_cif(p_cif) end
 ---@param p_cif integer
 ---@param fp integer
 ---@param p_rvalue integer
----@param avalue integer[]
+---@param avalue (integer|number)[]
 ---@param pp_avalue integer
+---@return integer|number|nil
 function ffi.unsafe_call(p_cif, fp, p_rvalue, avalue, pp_avalue) end
 
 ---@param p_cif integer

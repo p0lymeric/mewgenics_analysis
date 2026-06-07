@@ -337,7 +337,7 @@ bitfield ClearedCampaignZonesB1 {
     bunker: 1;                    // 10
     moon : 1;                     // 11
     core : 1;                     // 12
-    unknown_13 : 1;               // 13; probably Rift, though haven't visited yet
+    rift : 1;                     // 13
     lab: 1;                       // 14
     ice_age: 1;                   // 15
 };
