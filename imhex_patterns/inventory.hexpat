@@ -28,13 +28,16 @@ struct Equipment {
     bool has_equipment;
     if(has_equipment) {
         String name;
-        String unknown_0; // set by str_aux_initialize
-        s32 unknown_1; // uses left
+        // Optional parameter string
+        // (e.g. the Champion's Mask stores its buffed stat in this string)
+        String aux_string;
+        s32 uses_left;
         s32 unknown_2;
+        // Appears to be a bitfield indicating cursed or quest items
         s32 unknown_3;
         s32 unknown_4;
         u8 unknown_5;
-        u8 unknown_6; // possibly times taken on adventure?
+        u8 times_taken_on_adventure;
     }
 };
 

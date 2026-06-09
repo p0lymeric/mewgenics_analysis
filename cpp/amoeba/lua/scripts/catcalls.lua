@@ -4,33 +4,33 @@
 local amoeba = require("amoeba")
 
 local fp_get_window = amoeba.c.ffi.get_proc_address(0, "SDL_GL_GetCurrentWindow")
-local cfun_get_window = amoeba.utils.ffi.CFunction:new(
-    amoeba.utils.ffi.e_type.pointer,
+local cif_get_window = amoeba.c.ffi.CInterface.make(
+    amoeba.c.ffi.e_type.pointer,
     {}
 )
 
 local fp_minimize = amoeba.c.ffi.get_proc_address(0, "SDL_MinimizeWindow")
-local cfun_minimize = amoeba.utils.ffi.CFunction:new(
-    amoeba.utils.ffi.e_type.void,
-    { amoeba.utils.ffi.e_type.pointer }
+local cif_minimize = amoeba.c.ffi.CInterface.make(
+    amoeba.c.ffi.e_type.void,
+    { amoeba.c.ffi.e_type.pointer }
 )
 
 local fp_sin = amoeba.c.ffi.get_proc_address(0, "SDL_sin")
-local cfun_sin = amoeba.utils.ffi.CFunction:new(
-    amoeba.utils.ffi.e_type.double,
-    { amoeba.utils.ffi.e_type.double }
+local cif_sin = amoeba.c.ffi.CInterface.make(
+    amoeba.c.ffi.e_type.double,
+    { amoeba.c.ffi.e_type.double }
 )
 
 local fp_cosf = amoeba.c.ffi.get_proc_address(0, "SDL_cosf")
-local cfun_cosf = amoeba.utils.ffi.CFunction:new(
-    amoeba.utils.ffi.e_type.float,
-    { amoeba.utils.ffi.e_type.float }
+local cif_cosf = amoeba.c.ffi.CInterface.make(
+    amoeba.c.ffi.e_type.float,
+    { amoeba.c.ffi.e_type.float }
 )
 
 local fp_messageboxa = amoeba.c.ffi.get_proc_address(amoeba.c.ffi.get_module_handle("user32.dll"), "MessageBoxA")
-local cfun_messageboxa = amoeba.utils.ffi.CFunction:new(
-    amoeba.utils.ffi.e_type.sint32,
-    { amoeba.utils.ffi.e_type.pointer, amoeba.utils.ffi.e_type.pointer, amoeba.utils.ffi.e_type.pointer, amoeba.utils.ffi.e_type.uint32 }
+local cif_messageboxa = amoeba.c.ffi.CInterface.make(
+    amoeba.c.ffi.e_type.sint32,
+    { amoeba.c.ffi.e_type.pointer, amoeba.c.ffi.e_type.pointer, amoeba.c.ffi.e_type.pointer, amoeba.c.ffi.e_type.uint32 }
 )
 
 ---@param str string
@@ -44,17 +44,17 @@ local cstring = function(str)
     return p_cstr
 end
 
-local sinpi = cfun_sin:unsafe_call(fp_sin, math.pi)
+local sinpi = cif_sin:unsafe_call(fp_sin, math.pi)
 
-local cospi = cfun_cosf:unsafe_call(fp_cosf, math.pi)
+local cospi = cif_cosf:unsafe_call(fp_cosf, math.pi)
 
 local p_text = cstring(string.format("mrrow (fun math facts)\nsin(pi)=%f\ncos(pi)=%f", sinpi, cospi))
 local p_caption = cstring("meow meow")
 
-local p_window = cfun_get_window:unsafe_call(fp_get_window)
+local p_window = cif_get_window:unsafe_call(fp_get_window)
 
-cfun_minimize:unsafe_call(fp_minimize, p_window)
-local ret_val = cfun_messageboxa:unsafe_call(fp_messageboxa, 0, p_text, p_caption, 0)
+cif_minimize:unsafe_call(fp_minimize, p_window)
+local ret_val = cif_messageboxa:unsafe_call(fp_messageboxa, 0, p_text, p_caption, 0)
 
 print(string.format("MessageBoxA returned %d", ret_val))
 

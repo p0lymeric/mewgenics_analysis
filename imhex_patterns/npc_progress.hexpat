@@ -23,16 +23,10 @@ struct Vector<S, T> {
     T data[size];
 };
 
-struct VectorP1<S, T> {
-    S size;
-    T data[size + 1];
-};
-
 struct KV<K, V> {
     K key;
     V value;
 };
-
 
 // FILE LAYOUT
 // Set to 38 (0x26) as of Mewgenics 1.0.20695

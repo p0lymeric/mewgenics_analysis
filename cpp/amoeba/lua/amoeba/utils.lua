@@ -3,6 +3,4 @@
 
 local utils = {}
 
-utils.ffi = require("amoeba.utils.ffi")
-
 return utils

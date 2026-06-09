@@ -51,61 +51,30 @@ static int print_lua(lua_State *state) {
     return 0;
 }
 
-template<typename T>
-static int safe_read_lua(lua_State *state) {
-    void *addr = reinterpret_cast<void *>(luaL_checkinteger(state, 1));
-    T read_value;
-    if(!jf_read<T>(addr, &read_value)) {
-        luaL_error(state, "%s", std::format("cannot dereference: {:p}", addr).c_str());
-    }
-    if constexpr(std::is_integral_v<T>) {
-        lua_pushinteger(state, read_value);
-    } else {
-        lua_pushnumber(state, read_value);
-    }
-    return 1;
-}
+// libffi
 
-template<typename T>
-static int unsafe_read_lua(lua_State *state) {
-    T *addr = reinterpret_cast<T *>(luaL_checkinteger(state, 1));
-    if constexpr(std::is_integral_v<T>) {
-        lua_pushinteger(state, *addr);
-    } else {
-        lua_pushnumber(state, *addr);
-    }
-    return 1;
-}
-
-template<typename T>
-static int unsafe_write_lua(lua_State *state) {
-    T *addr = reinterpret_cast<T *>(luaL_checkinteger(state, 1));
-    if constexpr(std::is_integral_v<T>) {
-        T data = static_cast<T>(luaL_checkinteger(state, 2));
-        *addr = data;
-    } else {
-        T data = static_cast<T>(luaL_checknumber(state, 2));
-        *addr = data;
-    }
-    return 0;
-}
-
-static const luaL_Reg ffi_lib_lua[] = {
+static const luaL_Reg ffi_CType_lib_lua[] = {
     {
-        "new_type",
+        "make",
         [](lua_State *state) -> int {
-            luaL_checktype(state, 1, LUA_TTABLE);
-            unsigned int nelements = static_cast<unsigned int>(lua_rawlen(state, 1));
-            ffi_type **pp_elements = new ffi_type *[nelements + 1];
+            const int ARG_TYPES_IDX = 1;
+            luaL_checktype(state, ARG_TYPES_IDX, LUA_TTABLE);
+            unsigned int nelements = static_cast<unsigned int>(lua_rawlen(state, ARG_TYPES_IDX));
 
+            ffi_type *p_type = reinterpret_cast<ffi_type *>(lua_newuserdatauv(state, sizeof(ffi_type), 2));
+
+            ffi_type **pp_elements = reinterpret_cast<ffi_type **>(lua_newuserdatauv(state, sizeof(ffi_type *) * (nelements + 1), 0));
             for(unsigned int i = 0; i < nelements; i++) {
-                lua_rawgeti(state, 1, i + 1);
-                pp_elements[i] = reinterpret_cast<ffi_type *>(luaL_checkinteger(state, -1));
+                lua_rawgeti(state, ARG_TYPES_IDX, i + 1);
+                ffi_type *p_element = reinterpret_cast<ffi_type *>(luaL_testudata(state, -1, "amoeba.c.ffi.CType"));
+                if(p_element == nullptr) {
+                    luaL_error(state, "elements index %d is not a CType", i + 1);
+                }
+                pp_elements[i] = p_element;
                 lua_pop(state, 1);
             }
             pp_elements[nelements] = nullptr;
-
-            ffi_type *p_type = new ffi_type; // TODO can throw in which case we should free pp_elements
+            lua_setiuservalue(state, -2, 1);
 
             // size, alignment are automatically set
             // type must be STRUCT
@@ -114,85 +83,114 @@ static const luaL_Reg ffi_lib_lua[] = {
             p_type->type = FFI_TYPE_STRUCT;
             p_type->elements = pp_elements;
 
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(p_type));
+            // Populate a reference tracking array to tie referenced CType lifetime with this CType
+            lua_newtable(state);
+            for(unsigned int i = 0; i < nelements; i++) {
+                lua_rawgeti(state, ARG_TYPES_IDX, i + 1);
+                lua_rawseti(state, -2, i + 1);
+            }
+            lua_setiuservalue(state, -2, 2);
+
+            // p_type is on the stack
+            luaL_getmetatable(state, "amoeba.c.ffi.CType");
+            lua_setmetatable(state, -2);
             return 1;
         }
     },
-    {
-        "unsafe_delete_type",
-        [](lua_State *state) -> int {
-            ffi_type *p_type = reinterpret_cast<ffi_type *>(luaL_checkinteger(state, 1));
+    { nullptr, nullptr }
+};
 
-            delete[] p_type->elements;
-            delete p_type;
-            return 0;
-        }
-    },
+static const luaL_Reg ffi_CInterface_lib_lua[] = {
     {
-        "new_cif",
+        "make",
         [](lua_State *state) -> int {
-            ffi_abi abi = static_cast<ffi_abi>(luaL_checkinteger(state, 1));
-            ffi_type *p_rtype = reinterpret_cast<ffi_type *>(luaL_checkinteger(state, 2));
-            luaL_checktype(state, 3, LUA_TTABLE);
-            unsigned int nargs = static_cast<unsigned int>(lua_rawlen(state, 3));
-            ffi_type **pp_atypes = new ffi_type *[nargs];
+            const int ARG_RTYPE_IDX = 1;
+            const int ARG_ATYPES_IDX = 2;
+            const int ARG_ABI_IDX = 3;
+            ffi_type *p_rtype = reinterpret_cast<ffi_type *>(luaL_checkudata(state, ARG_RTYPE_IDX, "amoeba.c.ffi.CType"));
+            luaL_checktype(state, ARG_ATYPES_IDX, LUA_TTABLE);
+            unsigned int nargs = static_cast<unsigned int>(lua_rawlen(state, ARG_ATYPES_IDX));
+            ffi_abi abi = static_cast<ffi_abi>(luaL_optinteger(state, ARG_ABI_IDX, FFI_WIN64));
+
+            ffi_cif *p_cif = reinterpret_cast<ffi_cif *>(lua_newuserdatauv(state, sizeof(ffi_cif), 4));
+
+            ffi_type **pp_atypes = reinterpret_cast<ffi_type **>(lua_newuserdatauv(state, sizeof(ffi_type *) * nargs, 0));
             for(unsigned int i = 0; i < nargs; i++) {
-                lua_rawgeti(state, 3, i + 1);
-                pp_atypes[i] = reinterpret_cast<ffi_type *>(luaL_checkinteger(state, -1));
+                lua_rawgeti(state, ARG_ATYPES_IDX, i + 1);
+                ffi_type *p_atype = reinterpret_cast<ffi_type *>(luaL_testudata(state, -1, "amoeba.c.ffi.CType"));
+                if(p_atype == nullptr) {
+                    luaL_error(state, "atypes index %d is not a CType", i + 1);
+                }
+                pp_atypes[i] = p_atype;
                 lua_pop(state, 1);
             }
-
-            ffi_cif *p_cif = new ffi_cif; // TODO can throw in which case we should free pp_atypes
-            // std::memset(p_cif, 0, sizeof(ffi_cif));
+            lua_setiuservalue(state, -2, 1);
 
             ffi_status result = ffi_prep_cif(p_cif, abi, nargs, p_rtype, pp_atypes);
             if(result != FFI_OK) {
-                delete[] pp_atypes;
-                delete p_cif;
                 luaL_error(state, "ffi_prep_cif failed with status %d", result);
             }
 
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(p_cif));
-            return 1;
-        }
-    },
-    {
-        "unsafe_delete_cif",
-        [](lua_State *state) -> int {
-            ffi_cif *p_cif = reinterpret_cast<ffi_cif *>(luaL_checkinteger(state, 1));
+            void **pp_avalue = reinterpret_cast<void **>(lua_newuserdatauv(state, sizeof(void *) * nargs * 2, 0));
+            for(unsigned int i = 0; i < nargs; i++) {
+                pp_avalue[nargs + i] = &pp_avalue[i];
+            }
+            lua_setiuservalue(state, -2, 2);
 
-            delete[] p_cif->arg_types;
-            delete p_cif;
-            return 0;
+            // TODO assert on unsatisfied overalignment requirement (type->alignment)?
+            void *p_rvalue = reinterpret_cast<void *>(lua_newuserdatauv(state, p_cif->rtype->size, 0));
+            lua_setiuservalue(state, -2, 3);
+            (void)p_rvalue;
+
+            // Populate a reference tracking array to tie CType lifetime with CInterface
+            lua_newtable(state);
+            lua_pushvalue(state, ARG_RTYPE_IDX);
+            lua_rawseti(state, -2, 1);
+            for(unsigned int i = 0; i < nargs; i++) {
+                lua_rawgeti(state, ARG_ATYPES_IDX, i + 1);
+                lua_rawseti(state, -2, i + 2);
+            }
+            lua_setiuservalue(state, -2, 4);
+
+            // p_cif is on the stack
+            luaL_getmetatable(state, "amoeba.c.ffi.CInterface");
+            lua_setmetatable(state, -2);
+            return 1;
         }
     },
     {
         "unsafe_call",
         [](lua_State *state) -> int {
-            ffi_cif *p_cif = reinterpret_cast<ffi_cif *>(luaL_checkinteger(state, 1));
+            ffi_cif *p_cif = reinterpret_cast<ffi_cif *>(luaL_checkudata(state, 1, "amoeba.c.ffi.CInterface"));
             void *fp = reinterpret_cast<void *>(luaL_checkinteger(state, 2));
-            void *p_rvalue = reinterpret_cast<void *>(luaL_checkinteger(state, 3));
-            luaL_checktype(state, 4, LUA_TTABLE);
-            unsigned int nargs = static_cast<unsigned int>(lua_rawlen(state, 4));
-            void **pp_avalue = reinterpret_cast<void **>(luaL_checkinteger(state, 5));
+            unsigned int bot_idx = 3; // args start at index 3
+            unsigned int top_idx = lua_gettop(state);
+            unsigned int nargs = top_idx < bot_idx ? 0 : top_idx - bot_idx + 1;
+
+            lua_getiuservalue(state, 1, 2);
+            void **pp_avalue = reinterpret_cast<void **>(lua_touserdata(state, -1));
+            lua_pop(state, 1);
+            lua_getiuservalue(state, 1, 3);
+            void *p_rvalue = lua_touserdata(state, -1);
+            lua_pop(state, 1);
 
             if (nargs != p_cif->nargs) {
                 luaL_error(state, "lua table length %d does not match ffi_cif nargs %d", nargs, p_cif->nargs);
             }
 
             // pp_avalue's latter half needs to point to its first half
-            for(unsigned int i = 0; i < nargs; i++) {
-                lua_rawgeti(state, 4, i + 1);
+            for(unsigned int j = bot_idx; j <= top_idx; j++) {
+                unsigned int i = j - bot_idx;
                 ffi_type *ty = p_cif->arg_types[i];
                 switch(ty->type) {
                     case FFI_TYPE_FLOAT: {
                         pp_avalue[i] = 0; // zero full 64 bits first
-                        float tmp = static_cast<float>(luaL_checknumber(state, -1));
+                        float tmp = static_cast<float>(luaL_checknumber(state, j));
                         std::memcpy(&pp_avalue[i], &tmp, sizeof(float));
                         break;
                     }
                     case FFI_TYPE_DOUBLE: {
-                        double tmp = luaL_checknumber(state, -1);
+                        double tmp = luaL_checknumber(state, j);
                         std::memcpy(&pp_avalue[i], &tmp, sizeof(double));
                         break;
                     }
@@ -207,16 +205,15 @@ static const luaL_Reg ffi_lib_lua[] = {
                     case FFI_TYPE_SINT32:
                     case FFI_TYPE_UINT64:
                     case FFI_TYPE_SINT64:
-                    case FFI_TYPE_STRUCT:
+                    case FFI_TYPE_STRUCT: // TODO do we need to point to the struct itself?
                     case FFI_TYPE_POINTER:
                     // case FFI_TYPE_COMPLEX: // not supported among Windows compiler superset
                     default:
                         // we're truncating a 2's complement int64, so we shouldn't need to consider
                         // sign extensions for narrower or equal width types
-                        pp_avalue[i] = reinterpret_cast<void *>(luaL_checkinteger(state, -1));
+                        pp_avalue[i] = reinterpret_cast<void *>(luaL_checkinteger(state, j));
                         break;
                 }
-                lua_pop(state, 1);
             }
 
             ffi_call(p_cif, FFI_FN(fp), p_rvalue, &pp_avalue[nargs]);
@@ -279,24 +276,10 @@ static const luaL_Reg ffi_lib_lua[] = {
             }
         }
     },
-{
-        "alloc_rvalue_avalue_buffers",
-        [](lua_State *state) -> int {
-            ffi_cif *p_cif = reinterpret_cast<ffi_cif *>(luaL_checkinteger(state, 1));
+    { nullptr, nullptr }
+};
 
-            void **pp_avalue = (void **)std::malloc(sizeof(void *) * p_cif->nargs * 2);
-            for(unsigned int i = 0; i < p_cif->nargs; i++) {
-                pp_avalue[p_cif->nargs + i] = &pp_avalue[i];
-            }
-
-            // TODO aligned malloc?
-            void * p_rvalue = std::malloc(p_cif->rtype->size);
-
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(p_rvalue));
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(pp_avalue));
-            return 2;
-        }
-    },
+static const luaL_Reg ffi_lib_lua[] = {
     {
         "get_module_handle",
         [](lua_State *state) -> int {
@@ -322,6 +305,47 @@ static const luaL_Reg ffi_lib_lua[] = {
     },
     { nullptr, nullptr }
 };
+
+// Memory helpers
+
+template<typename T>
+static int safe_read_lua(lua_State *state) {
+    void *addr = reinterpret_cast<void *>(luaL_checkinteger(state, 1));
+    T read_value;
+    if(!jf_read<T>(addr, &read_value)) {
+        luaL_error(state, "%s", std::format("cannot dereference: {:p}", addr).c_str());
+    }
+    if constexpr(std::is_integral_v<T>) {
+        lua_pushinteger(state, read_value);
+    } else {
+        lua_pushnumber(state, read_value);
+    }
+    return 1;
+}
+
+template<typename T>
+static int unsafe_read_lua(lua_State *state) {
+    T *addr = reinterpret_cast<T *>(luaL_checkinteger(state, 1));
+    if constexpr(std::is_integral_v<T>) {
+        lua_pushinteger(state, *addr);
+    } else {
+        lua_pushnumber(state, *addr);
+    }
+    return 1;
+}
+
+template<typename T>
+static int unsafe_write_lua(lua_State *state) {
+    T *addr = reinterpret_cast<T *>(luaL_checkinteger(state, 1));
+    if constexpr(std::is_integral_v<T>) {
+        T data = static_cast<T>(luaL_checkinteger(state, 2));
+        *addr = data;
+    } else {
+        T data = static_cast<T>(luaL_checknumber(state, 2));
+        *addr = data;
+    }
+    return 0;
+}
 
 static const luaL_Reg mem_lib_lua[] = {
     { "read_u8", safe_read_lua<uint8_t> },
@@ -391,6 +415,8 @@ static const luaL_Reg mem_lib_lua[] = {
     },
     { nullptr, nullptr }
 };
+
+// Host process helpers
 
 static const luaL_Reg mew_lib_lua[] = {
     {
@@ -464,6 +490,28 @@ void LuaWrapper::init() {
         luaL_requiref(state, "amoeba.c.ffi", [](lua_State *state) -> int {
             luaL_newlib(state, ffi_lib_lua);
 
+            // CType
+            if(luaL_newmetatable(state, "amoeba.c.ffi.CType")) {
+                luaL_setfuncs(state, ffi_CType_lib_lua, 0);
+                lua_pushvalue(state, -1);
+                lua_setfield(state, -2, "__index");
+
+                lua_pushliteral(state, "metatable access protected");
+                lua_setfield(state, -2, "__metatable");
+            }
+            lua_setfield(state, -2, "CType");
+
+            // CInterface
+            if(luaL_newmetatable(state, "amoeba.c.ffi.CInterface")) {
+                luaL_setfuncs(state, ffi_CInterface_lib_lua, 0);
+                lua_pushvalue(state, -1);
+                lua_setfield(state, -2, "__index");
+
+                lua_pushliteral(state, "metatable access protected");
+                lua_setfield(state, -2, "__metatable");
+            }
+            lua_setfield(state, -2, "CInterface");
+
             // e_status
             lua_newtable(state);
             lua_pushinteger(state, FFI_OK);
@@ -487,34 +535,44 @@ void LuaWrapper::init() {
             lua_setfield(state, -2, "e_abi");
 
             // e_type
+            auto push_primitive_ctype = [](lua_State *state, ffi_type *p_typein) {
+                ffi_type *p_type = reinterpret_cast<ffi_type *>(lua_newuserdatauv(state, sizeof(ffi_type), 0));
+
+                std::memcpy(p_type, p_typein, sizeof(ffi_type));
+
+                // p_type is on the stack
+                luaL_getmetatable(state, "amoeba.c.ffi.CType");
+                lua_setmetatable(state, -2);
+            };
             lua_newtable(state);
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_void));
+            push_primitive_ctype(state, &ffi_type_void);
             lua_setfield(state, -2, "void");
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_uint8));
+            push_primitive_ctype(state, &ffi_type_uint8);
             lua_setfield(state, -2, "uint8");
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_sint8));
+            push_primitive_ctype(state, &ffi_type_sint8);
             lua_setfield(state, -2, "sint8");
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_uint16));
+            push_primitive_ctype(state, &ffi_type_uint16);
             lua_setfield(state, -2, "uint16");
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_sint16));
+            push_primitive_ctype(state, &ffi_type_sint16);
             lua_setfield(state, -2, "sint16");
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_uint32));
+            push_primitive_ctype(state, &ffi_type_uint32);
             lua_setfield(state, -2, "uint32");
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_sint32));
+            push_primitive_ctype(state, &ffi_type_sint32);
             lua_setfield(state, -2, "sint32");
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_uint64));
+            push_primitive_ctype(state, &ffi_type_uint64);
             lua_setfield(state, -2, "uint64");
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_sint64));
+            push_primitive_ctype(state, &ffi_type_sint64);
             lua_setfield(state, -2, "sint64");
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_float));
+            push_primitive_ctype(state, &ffi_type_float);
             lua_setfield(state, -2, "float");
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_double));
+            push_primitive_ctype(state, &ffi_type_double);
             lua_setfield(state, -2, "double");
-            lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_pointer));
+            push_primitive_ctype(state, &ffi_type_pointer);
             lua_setfield(state, -2, "pointer");
-            // lua_pushinteger(state, reinterpret_cast<lua_Integer>(&ffi_type_longdouble));
+            // push_primitive_ctype(state, &ffi_type_longdouble);
             // lua_setfield(state, -2, "longdouble");
             lua_setfield(state, -2, "e_type");
+
             return 1;
         }, 0);
         lua_setfield(state, -2, "ffi");

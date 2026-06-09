@@ -24,54 +24,42 @@ ffi.e_abi = {
     -- DEFAULT_ABI = 1,
 }
 
---- These are pointers at runtime but we assign arbitrary numbers for static analysis use
----@enum e_type
-ffi.e_type = {
-    void = 0,
-    uint8 = 1,
-    sint8 = 2,
-    uint16 = 3,
-    sint16 = 4,
-    uint32 = 5,
-    sint32 = 6,
-    uint64 = 7,
-    sint64 = 8,
-    float = 9,
-    double = 10,
-    pointer = 11,
-    -- longdouble = 12,
-}
+---@class e_type
+---@field void CType
+---@field uint8 CType
+---@field sint8 CType
+---@field uint16 CType
+---@field sint16 CType
+---@field uint32 CType
+---@field sint32 CType
+---@field uint64 CType
+---@field sint64 CType
+---@field float CType
+---@field double CType
+---@field pointer CType
+-- ---@field longdouble CType
+ffi.e_type = {}
 
----@alias ptype e_type|integer
+---@class CType
+ffi.CType = {}
 
----@param elements ptype[]
----@return integer
-function ffi.new_type(elements) end
+---@param elements CType[]
+---@return CType
+function ffi.CType.make(elements) end
 
----@param type_ integer
-function ffi.unsafe_delete_type(type_) end
+---@class CInterface
+ffi.CInterface = {}
 
----@param abi e_abi
----@param rtype ptype
----@param atypes ptype[]
----@return integer
-function ffi.new_cif(abi, rtype, atypes) end
+---@param rtype CType
+---@param atypes CType[]
+---@param abi e_abi|nil
+---@return CInterface
+function ffi.CInterface.make(rtype, atypes, abi) end
 
----@param p_cif integer
-function ffi.unsafe_delete_cif(p_cif) end
-
----@param p_cif integer
 ---@param fp integer
----@param p_rvalue integer
----@param avalue (integer|number)[]
----@param pp_avalue integer
+---@param ... integer|number
 ---@return integer|number|nil
-function ffi.unsafe_call(p_cif, fp, p_rvalue, avalue, pp_avalue) end
-
----@param p_cif integer
----@return integer p_rvalue
----@return integer pp_avalue
-function ffi.alloc_rvalue_avalue_buffers(p_cif) end
+function ffi.CInterface:unsafe_call(fp, ...) end
 
 ---@param module_name string
 ---@return integer

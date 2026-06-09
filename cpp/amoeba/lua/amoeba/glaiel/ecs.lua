@@ -1,10 +1,10 @@
 -- Mewgenics' ECS system
 -- polymeric 2026
 
+local cffi = require("amoeba.c.ffi")
 local cmem = require("amoeba.c.mem")
 local cmew = require("amoeba.c.mew")
 local msvc = require("amoeba.msvc")
-local uffi = require("amoeba.utils.ffi")
 
 local ecs = {}
 
@@ -176,6 +176,11 @@ function ecs.Component:get_objid()
     return cmem.read_u32(self.addr + COMPONENT_OBJID_OFFSET)
 end
 
+local cif_get_object_type_str = cffi.CInterface.make(
+    cffi.e_type.void,
+    { cffi.e_type.pointer, cffi.e_type.pointer }
+)
+
 ---@return string
 function ecs.Component:get_object_type_str()
     local vtable = cmem.read_u64(self.addr)
@@ -183,10 +188,7 @@ function ecs.Component:get_object_type_str()
 
     local p_xstring = cmem.alloc(32)
     cmem.unsafe_memset(p_xstring, 0, 32)
-    -- local p_cif = cffi.new_cif(cffi.e_abi.WIN64, cffi.e_type.void, { cffi.e_type.pointer, cffi.e_type.pointer })
-    -- cffi.unsafe_call(p_cif, fn, 0, { self.addr, p_xstring })
-    -- cffi.unsafe_delete_cif(p_cif)
-    uffi.CFunction:new(uffi.e_type.void, { uffi.e_type.pointer, uffi.e_type.pointer }):unsafe_call(fn, self.addr, p_xstring)
+    cif_get_object_type_str:unsafe_call(fn, self.addr, p_xstring)
     local str = msvc.xstring.read(p_xstring)
     local capacity = cmem.unsafe_read_u64(p_xstring + 0x18)
     if capacity >= 16 then
