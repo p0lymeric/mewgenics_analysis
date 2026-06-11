@@ -71,6 +71,11 @@ class TransactionLogger {
 public:
     TransactionLogger();
     ~TransactionLogger();
+    TransactionLogger(const TransactionLogger &other) = delete;
+    TransactionLogger &operator=(const TransactionLogger &other) = delete;
+    // TODO move
+    // TransactionLogger(TransactionLogger &&other);
+    // TransactionLogger &operator=(TransactionLogger &&other);
 
     void open(std::filesystem::path file_path, bool use_lz4);
     void close();

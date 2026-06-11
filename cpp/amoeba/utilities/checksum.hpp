@@ -2,10 +2,12 @@
 
 #include "utilities/constexpr.hpp"
 
+#include <climits>
 #include <fstream>
 #include <array>
 #include <optional>
 #include <filesystem>
+#include <span>
 #include <stdexcept>
 
 #include "tomcrypt.h"
@@ -31,6 +33,26 @@ inline std::optional<Hash256Bit> sha256_file(const std::filesystem::path &path) 
 
     if(exe_file.bad()) {
         return std::nullopt;
+    }
+
+    Hash256Bit digest;
+    sha256_done(&md, digest.data());
+
+    return digest;
+}
+
+inline Hash256Bit sha256_span(const std::span<const uint8_t> span) {
+    hash_state md;
+    sha256_init(&md);
+
+    size_t offset = 0;
+    while(span.size() - offset >= ULONG_MAX) {
+        sha256_process(&md, span.data() + offset, ULONG_MAX);
+        offset += ULONG_MAX;
+    }
+
+    if(offset < span.size()) {
+        sha256_process(&md, span.data() + offset, static_cast<unsigned long>(span.size() - offset));
     }
 
     Hash256Bit digest;

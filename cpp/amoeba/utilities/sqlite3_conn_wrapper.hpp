@@ -29,6 +29,11 @@ public:
 
     Sqlite3ConnWrapper();
     ~Sqlite3ConnWrapper();
+    Sqlite3ConnWrapper(const Sqlite3ConnWrapper &other) = delete;
+    Sqlite3ConnWrapper &operator=(const Sqlite3ConnWrapper &other) = delete;
+    // TODO move
+    // Sqlite3ConnWrapper(Sqlite3ConnWrapper &&other);
+    // Sqlite3ConnWrapper &operator=(Sqlite3ConnWrapper &&other);
 
     bool open(std::filesystem::path db_path);
     bool close();

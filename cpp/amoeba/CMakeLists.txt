@@ -12,6 +12,7 @@ add_library(${PROJECT_NAME} SHARED
     utilities/mewjector_support.c
     utilities/imgui_support.cpp
     utilities/lua_wrapper.cpp
+    utilities/pe_view.cpp
     ffi/cat_factory.cpp
     ffi/experimental.cpp
 )

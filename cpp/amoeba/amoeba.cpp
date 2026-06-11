@@ -6,8 +6,6 @@
 #include "utilities/portal.hpp"
 #include "utilities/stopwatch.hpp"
 
-#include <filesystem>
-
 #include <windows.h>
 
 #include "detours.h"
@@ -69,6 +67,7 @@ AmoebaErrorCode on_attach() {
     size_t host_exec_image_size = get_pe_image_mapped_size(host_exec_module);
     G.host_exec_base_va = host_exec_base_va;
     G.host_exec_image_size = host_exec_image_size;
+    G.host_exec_pe_view.open(get_module_file_path(NULL));
 
     // Create a Win32 console window with which to print log messages
     ALLOC_CONSOLE();
@@ -80,9 +79,8 @@ AmoebaErrorCode on_attach() {
     // Calculate the SHA-256 digest of the executable
     {
         MAKE_STOPWATCH_SCOPE(sct, "sha256 calculation");
-        std::filesystem::path exe_path = get_module_file_path(NULL);
-        G.exe_actual_sha256 = sha256_file(exe_path);
-        if(G.exe_actual_sha256.has_value()) {
+        if(G.host_exec_pe_view.is_opened()) {
+            G.exe_actual_sha256 = sha256_span(G.host_exec_pe_view.get_file_span());
             G.exe_hash_mismatch_detected = (G.exe_actual_sha256.value() != EXE_SHA256);
         }
     }
@@ -106,15 +104,15 @@ AmoebaErrorCode on_attach() {
     {
         MAKE_STOPWATCH_SCOPE(sct, "symbol resolution");
         // Resolve portals (trampolines to functions and data)
-        if(!SPortalRegistry::resolve_portals(host_exec_base_va, host_exec_image_size)) {
+        if(!SPortalRegistry::resolve_portals(host_exec_base_va, G.host_exec_pe_view)) {
             G.symbol_resolution_failed = true;
         }
         // Resolve function hook targets
-        if(!SFunctionHookRegistry::resolve_hooks(host_exec_base_va, host_exec_image_size, 0)) {
+        if(!SFunctionHookRegistry::resolve_hooks(host_exec_base_va, G.host_exec_pe_view, 0)) {
             G.symbol_resolution_failed = true;
         }
         // SDL is exported by Mewgenics.exe. If we fail to locate that, we'll just crash.
-        if(!SFunctionHookRegistry::resolve_hooks(host_exec_base_va, host_exec_image_size, 1)) {
+        if(!SFunctionHookRegistry::resolve_hooks(host_exec_base_va, G.host_exec_pe_view, 1)) {
             return AmoebaErrorCode::FailedToResolveSymbol;
         }
     }
