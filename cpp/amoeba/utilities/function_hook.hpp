@@ -9,9 +9,12 @@
 
 #include "utilities/pe_view.hpp"
 
-#include <vector>
-#include <unordered_map>
+#include <cstddef>
+#include <cstdint>
 #include <bit>
+#include <optional>
+#include <unordered_map>
+#include <vector>
 
 #include <windows.h>
 
@@ -505,20 +508,25 @@ public:
     {}
 
     FP calculate_target(uintptr_t offset, size_t size) override {
-        return reinterpret_cast<FP>(sig.find_unique_match_or_none(reinterpret_cast<uint8_t *>(offset), size));
+        uint8_t *result = const_cast<uint8_t *>(sig.find_unique_match_or_none(reinterpret_cast<const uint8_t *>(offset), size));
+        return reinterpret_cast<FP>(result);
     }
 
     FP calculate_target(uintptr_t offset, PeView &pe_view) override {
         if(pe_view.is_opened()) {
-            std::span<uint8_t> span = pe_view.get_file_span();
-            uint8_t *span_data = span.data();
+            std::span<const uint8_t> span = pe_view.get_file_span();
+            const uint8_t *span_data = span.data();
             size_t span_size = span.size();
 
-            uint8_t *result = sig.find_unique_match_or_none(span_data, span_size);
+            const uint8_t *result = sig.find_unique_match_or_none(span_data, span_size);
             if(result == nullptr) {
                 return nullptr;
             }
-            return reinterpret_cast<FP>(pe_view.file_offset_to_rva(result - span_data) + offset);
+
+            std::optional<uintptr_t> rva = pe_view.file_offset_to_rva(result - span_data);
+            if(rva.has_value()) {
+                return reinterpret_cast<FP>(rva.value() + offset);
+            }
         }
         return nullptr;
     }

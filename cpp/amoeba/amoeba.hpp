@@ -4,7 +4,6 @@
 #include "utilities/sqlite3_conn_wrapper.hpp"
 #include "utilities/checksum.hpp"
 #include "utilities/signature.hpp"
-#include "utilities/pe_view.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -105,7 +104,6 @@ struct GlobalContext {
     // Mewgenics.exe offset.
     uintptr_t host_exec_base_va;
     uintptr_t host_exec_image_size;
-    PeView host_exec_pe_view;
 
     // Whether it is permissible for the dll to self-eject.
     // (false if the dll cannot self-uninstall its hooks)

@@ -1,1 +1,2 @@
 add_subdirectory(signature_fuzzer)
+add_subdirectory(pe_view_fuzzer)

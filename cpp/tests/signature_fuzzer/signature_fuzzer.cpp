@@ -15,8 +15,8 @@
 // That rabbit's got a vicious streak a mile wide! It's a killer!
 // Bugs discovered: 3
 
-std::unordered_set<uint8_t *> our_find_all(VectorPatternDescriptor &pd, uint8_t *sequence_bytes, size_t sequence_bytes_size) {
-    std::unordered_set<uint8_t *> results;
+std::unordered_set<const uint8_t *> our_find_all(VectorPatternDescriptor &pd, const uint8_t *sequence_bytes, size_t sequence_bytes_size) {
+    std::unordered_set<const uint8_t *> results;
     auto pattern = pd.pattern();
     auto pattern_mask = pd.pattern_mask();
     if(pattern.size_bytes() > sequence_bytes_size) {
@@ -74,11 +74,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
     }
 
     // Execute our simple implementation of a "find_all" routine
-    std::unordered_set<uint8_t *> our_find_all_results = our_find_all(pd, (uint8_t *)sequence_bytes, sequence_bytes_size);
+    std::unordered_set<const uint8_t *> our_find_all_results = our_find_all(pd, sequence_bytes, sequence_bytes_size);
 
     // Fuzz VectorPatternDescriptor::find_unique_match_or_none
-    uint8_t *our_find_unique_match_or_none_result = our_find_all_results.size() == 1 ? *our_find_all_results.begin() : nullptr;
-    uint8_t *their_find_unique_match_or_none_result = pd.find_unique_match_or_none((uint8_t *)sequence_bytes, sequence_bytes_size);
+    const uint8_t *our_find_unique_match_or_none_result = our_find_all_results.size() == 1 ? *our_find_all_results.begin() : nullptr;
+    const uint8_t *their_find_unique_match_or_none_result = pd.find_unique_match_or_none(sequence_bytes, sequence_bytes_size);
     if(their_find_unique_match_or_none_result != our_find_unique_match_or_none_result) {
         std::cout << std::format("find_unique_match_or_none mismatch detected\n");
         std::cout << std::format("Their (unit) ptr: {:p}\n", (void *)their_find_unique_match_or_none_result);
@@ -88,8 +88,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
     }
 
     // Fuzz VectorPatternDescriptor::find_callback
-    std::unordered_set<uint8_t *> their_find_callback_results;
-    pd.find_callback((uint8_t *)sequence_bytes, sequence_bytes_size, [&](uint8_t *result) -> bool {
+    std::unordered_set<const uint8_t *> their_find_callback_results;
+    pd.find_callback(sequence_bytes, sequence_bytes_size, [&](const uint8_t *result) -> bool {
         auto emplacement_result = their_find_callback_results.emplace(result);
         if(!emplacement_result.second) {
             std::cout << std::format("find_callback returned a duplicate result\n");
