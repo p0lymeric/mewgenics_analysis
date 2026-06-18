@@ -17,8 +17,14 @@
 extern "C" {
 #endif
 
-// Gets a cached instance of the Mewjector API struct.
+// Initializes a cached instance of the Mewjector API struct.
+int MJ_SUPPORT_InitAPI(const char *owner);
+
+// Gets the cached instance of the Mewjector API struct resolved by MJ_SUPPORT_InitAPI().
 const MewjectorAPI *MJ_SUPPORT_GetAPI(void);
+
+// Gets the owner string that was passed to MJ_SUPPORT_InitAPI().
+const char *MJ_SUPPORT_GetOwner(void);
 
 #ifdef __cplusplus
 }

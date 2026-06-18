@@ -62,6 +62,9 @@ std::string get_user_facing_error_message(AmoebaErrorCode error_code) {
 }
 
 AmoebaErrorCode on_attach() {
+    // Fetch the Mewjector API if it is present
+    MJ_SUPPORT_InitAPI("polymeric.amoeba");
+
     // Actual virtual address where mapped executable begins
     HMODULE host_exec_module = GetModuleHandle(NULL);
     uintptr_t host_exec_base_va = reinterpret_cast<uintptr_t>(host_exec_module);

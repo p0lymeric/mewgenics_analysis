@@ -113,7 +113,7 @@ public:
         }
         #ifdef ENABLE_MEWJECTOR_LOGGING
         if(const MewjectorAPI *mj = MJ_SUPPORT_GetAPI(); mj != NULL) {
-            mj->Log("polymeric.amoeba", "%s", multibyte.c_str());
+            mj->Log(MJ_SUPPORT_GetOwner(), "%s", multibyte.c_str());
         }
         #endif
     }
