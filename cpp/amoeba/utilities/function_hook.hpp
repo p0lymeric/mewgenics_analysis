@@ -523,7 +523,11 @@ public:
     {}
 
     FP calculate_target(uintptr_t offset, size_t size) override {
-        uint8_t *result = const_cast<uint8_t *>(sig.find_unique_match_or_none(reinterpret_cast<const uint8_t *>(offset), size));
+        uint8_t *result = const_cast<uint8_t *>(
+            sig.find_unique_match_or_none(reinterpret_cast<const uint8_t *>(offset), size, [](const uint8_t *addr) -> const uint8_t * {
+                return addr;
+            })
+        );
         return reinterpret_cast<FP>(result);
     }
 
@@ -533,15 +537,20 @@ public:
             const uint8_t *span_data = span.data();
             size_t span_size = span.size();
 
-            const uint8_t *result = sig.find_unique_match_or_none(span_data, span_size);
-            if(result == nullptr) {
-                return nullptr;
-            }
+            uint8_t *result = const_cast<uint8_t *>(
+                sig.find_unique_match_or_none(span_data, span_size, [&](const uint8_t *addr) -> const uint8_t * {
+                    if(addr == nullptr) {
+                        return nullptr;
+                    }
+                    std::optional<uintptr_t> rva = pe_view.file_offset_to_rva(addr - span_data);
+                    if(rva.has_value()) {
+                        return reinterpret_cast<const uint8_t *>(rva.value() + offset);
+                    }
+                    return nullptr;
+                })
+            );
 
-            std::optional<uintptr_t> rva = pe_view.file_offset_to_rva(result - span_data);
-            if(rva.has_value()) {
-                return reinterpret_cast<FP>(rva.value() + offset);
-            }
+            return reinterpret_cast<FP>(result);
         }
         return nullptr;
     }
@@ -550,3 +559,4 @@ public:
 #undef SUPPORT_MINHOOK_HOOK_IMPL
 #undef SUPPORT_DETOURS_HOOK_IMPL
 #undef SUPPORT_MEWJECTOR_HOOK_IMPL
+#undef COMPAT_MEWJECTOR_MEASURE_STOLENBYTES

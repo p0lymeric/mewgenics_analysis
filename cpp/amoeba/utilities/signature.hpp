@@ -15,11 +15,10 @@
 #include <concepts>
 #include <cstring>
 #include <format>
-// #include <memory>
+#include <functional>
 #include <span>
 #include <stdexcept>
 #include <string_view>
-// #include <type_traits>
 #include <vector>
 
 // Signature descriptors and memory pattern scanning.
@@ -587,8 +586,9 @@ public:
 
 class ISigDescriptor {
 public:
+    using SeqToVaCb = std::function<const uint8_t *(const uint8_t *addr)>;
     virtual ~ISigDescriptor() = default;
-    virtual const uint8_t *find_unique_match_or_none(const uint8_t *seq_start, size_t seq_size_bytes) const = 0;
+    virtual const uint8_t *find_unique_match_or_none(const uint8_t *seq_start, size_t seq_size_bytes, const SeqToVaCb &seq_to_va) const = 0;
 };
 
 template<typename PD>
@@ -600,12 +600,12 @@ struct BDirectSig : ISigDescriptor {
         pattern(std::move(pattern)), offset(offset)
     {}
 
-    const uint8_t *find_unique_match_or_none(const uint8_t *seq_start, size_t seq_size_bytes) const override {
-        const uint8_t *addr = this->pattern.find_unique_match_or_none(seq_start, seq_size_bytes);
-        if(addr == nullptr) {
+    const uint8_t *find_unique_match_or_none(const uint8_t *seq_start, size_t seq_size_bytes, const SeqToVaCb &seq_to_va) const override {
+        const uint8_t *addr_va = seq_to_va(this->pattern.find_unique_match_or_none(seq_start, seq_size_bytes));
+        if(addr_va == nullptr) {
             return nullptr;
         } else {
-            return addr + offset;
+            return addr_va + offset;
         }
     }
 };
@@ -638,7 +638,7 @@ struct BIndirectSig : ISigDescriptor {
         pattern(std::move(pattern)), offset(offset), length(length), signed_(signed_), rip_relative(rip_relative)
     {}
 
-    const uint8_t *find_unique_match_or_none(const uint8_t *seq_start, size_t seq_size_bytes) const override {
+    const uint8_t *find_unique_match_or_none(const uint8_t *seq_start, size_t seq_size_bytes, const SeqToVaCb &seq_to_va) const override {
         const uint8_t *addr = this->pattern.find_unique_match_or_none(seq_start, seq_size_bytes);
         if(addr == nullptr) {
             return nullptr;
@@ -667,7 +667,11 @@ struct BIndirectSig : ISigDescriptor {
             }
 
             if (rip_relative) {
-                const uint8_t *rip = addr + this->offset + length;
+                const uint8_t *addr_va = seq_to_va(addr);
+                if(addr_va == nullptr) {
+                    return nullptr;
+                }
+                const uint8_t *rip = addr_va + this->offset + length;
                 return rip + operand_ext;
             } else {
                 return reinterpret_cast<uint8_t *>(operand_ext);
@@ -691,39 +695,6 @@ public:
         return BIndirectSig(pd, offset, length, signed_, rip_relative);
     }
 };
-
-// TODO not happy with this class (shared_ptr use, no consteval make variant)
-// FIXME need a consteval variant or to properly sequence static init with function_hook/portal
-// Segal's Law: "A man with a C++ compiler knows both specified and implementation-defined behaviour. A man with 4 C++ compilers only knows UB."
-// struct FirstMatchSig : ISigDescriptor {
-//     std::vector<std::shared_ptr<ISigDescriptor>> sigs_;
-
-//     template<typename... Sigs>
-//     FirstMatchSig(Sigs &&...sigs) {
-//         // this is very, uhm, C++
-//         (this->sigs_.emplace_back(std::make_shared<std::decay_t<Sigs>>(std::forward<Sigs>(sigs))), ...);
-//     }
-
-//     template<typename... Sigs>
-//     static FirstMatchSig make(Sigs &&...sigs) {
-//         return FirstMatchSig(std::forward<Sigs>(sigs)...);
-//     }
-
-//     template<typename S>
-//     void add(S &&sig) {
-//         this->sigs_.emplace_back(std::make_shared<std::decay_t<S>>(std::forward<S>(sig)));
-//     }
-
-//     const uint8_t *find_unique_match_or_none(const uint8_t *seq_start, size_t seq_size_bytes) const override {
-//         for(auto &sig : this->sigs_) {
-//             const uint8_t *addr = sig->find_unique_match_or_none(seq_start, seq_size_bytes);
-//             if(addr != nullptr) {
-//                 return addr;
-//             }
-//         }
-//         return nullptr;
-//     }
-// };
 
 #undef USE_SSE2_INTRINSICS_STAGE1
 #undef USE_AVX2_INTRINSICS_STAGE1

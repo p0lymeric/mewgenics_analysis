@@ -135,7 +135,11 @@ public:
     }
 
     bool resolve(uintptr_t offset, size_t size) override {
-        uint8_t *result = const_cast<uint8_t *>(sig.find_unique_match_or_none(reinterpret_cast<const uint8_t *>(offset), size));
+        uint8_t *result = const_cast<uint8_t *>(
+            sig.find_unique_match_or_none(reinterpret_cast<const uint8_t *>(offset), size, [](const uint8_t *addr) -> const uint8_t * {
+                return addr;
+            })
+        );
         if(result == nullptr) {
             return false;
         }
@@ -149,16 +153,24 @@ public:
             const uint8_t *span_data = span.data();
             size_t span_size = span.size();
 
-            const uint8_t *result = sig.find_unique_match_or_none(span_data, span_size);
+            uint8_t *result = const_cast<uint8_t *>(
+                sig.find_unique_match_or_none(span_data, span_size, [&](const uint8_t *addr) -> const uint8_t * {
+                    if(addr == nullptr) {
+                        return nullptr;
+                    }
+                    auto rva = pe_view.file_offset_to_rva(addr - span_data);
+                    if(rva.has_value()) {
+                        return reinterpret_cast<const uint8_t *>(rva.value() + offset);
+                    }
+                    return nullptr;
+                })
+            );
             if(result == nullptr) {
                 return false;
             }
 
-            std::optional<uintptr_t> rva = pe_view.file_offset_to_rva(result - span_data);
-            if(rva.has_value()) {
-                target = reinterpret_cast<T>(rva.value() + offset);
-                return true;
-            }
+            target = reinterpret_cast<T>(result);
+            return true;
         }
         return false;
     }
